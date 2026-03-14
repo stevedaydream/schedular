@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls G:/project/scheduler/.env* 2>/dev/null)",
+      "Bash(cd \"G:/project/scheduler/gas\" && clasp pull 2>&1)",
+      "Bash(clasp --version && clasp login --status 2>&1)",
+      "Bash(clasp open:*)",
+      "Bash(cd \"G:/project/scheduler/gas\" && clasp login 2>&1)",
+      "Bash(cd \"G:/project/scheduler/gas\" && clasp push 2>&1)",
+      "Bash(cd \"G:/project/scheduler/gas\" && clasp list 2>&1)",
+      "Bash(cd \"G:/project/scheduler/gas\" && rm *.js && clasp push 2>&1)",
+      "Bash(cd \"G:/project/scheduler/gas\" && clasp deploy --deploymentId AKfycbyhepYA8SA-M2Ulil9itz3dOeKNoBxfPLPUSllt78UAujASG7UpQUPwm02ZbMJzXFKXtg 2>&1)",
+      "Bash(npm run:*)",
+      "Bash(netlify deploy:*)",
+      "Bash(netlify sites:list 2>&1)"
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+#netlify deploy https://delightful-zabaione-5cc15d.netlify.app
+cd G:\project\scheduler
+
+npm run build && netlify deploy --prod --dir=dist   
+
+#GAS clasp push +deploy
+
+cd G:\project\scheduler\gas
+
+#推送檔案到GAS=存檔
+
+clasp push
+
+#部署到GAS
+
+clasp deploy --deploymentId AKfycbyhepYA8SA-M2Ulil9itz3dOeKNoBxfPLPUSllt78UAujASG7UpQUPwm02ZbMJzXFKXtg
