@@ -108,7 +108,7 @@ var Schedule = (function () {
   }
 
   function batchSaveShifts(body) {
-    const { yyyyMM, shifts, cellNotes, updatedPools } = body;
+    const { yyyyMM, shifts, cellNotes, updatedPools, metaUpdates } = body;
     if (!yyyyMM || !shifts) return { success: false, error: '缺少必要參數' };
 
     const userRole = body._user?.role;
@@ -160,6 +160,13 @@ var Schedule = (function () {
         setMeta(ss, yyyyMM, 'proposedPools', JSON.stringify(updatedPools));
       }
 
+      // Write arbitrary meta key-values (e.g. weekendFilled: true)
+      if (metaUpdates && typeof metaUpdates === 'object') {
+        Object.entries(metaUpdates).forEach(function([k, v]) {
+          setMeta(ss, yyyyMM, k, typeof v === 'string' ? v : JSON.stringify(v));
+        });
+      }
+
       return { success: true };
     } finally {
       lock.releaseLock();
@@ -201,6 +208,7 @@ var Schedule = (function () {
       // Reset meta
       setMeta(ss, yyyyMM, 'cellNotes', '{}');
       setMeta(ss, yyyyMM, 'offQuota', '{}');
+      setMeta(ss, yyyyMM, 'weekendFilled', 'false');
 
       return { success: true };
     } finally {

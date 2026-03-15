@@ -287,11 +287,18 @@
           <span class="text-xs text-gray-400">
             {{ svAnyOrderLocked ? '輪序已鎖定（防誤觸）' : '點擊代號設為起點，或拖曳旋轉順序' }}
           </span>
-          <button
-            v-if="svAnyOrderLocked"
-            @click="svUnlockAll"
-            class="text-xs px-2 py-0.5 rounded border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors shrink-0"
-          >解鎖修改</button>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button
+              v-if="svAnyOrderLocked"
+              @click="svUnlockAll"
+              class="text-xs px-2 py-0.5 rounded border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors"
+            >解鎖修改</button>
+            <button
+              @click="svResetAllOrders"
+              class="text-xs px-2 py-0.5 rounded border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors"
+              title="清除歷史輪序紀錄，以現有人員名單重新開始"
+            >重設輪序</button>
+          </div>
         </div>
 
         <!-- Rotation order display: 4 rows, one per shift type -->
@@ -319,12 +326,14 @@
                       : '',
                     svIsStart(st, uid) ? 'bg-blue-500 text-white border-blue-600'
                     : svIsEnd(st, uid) ? 'bg-orange-400 text-white border-orange-500'
+                    : svIsFullCycleEnd(st, uid) ? 'bg-green-400 text-white border-green-500'
                     : 'bg-gray-100 text-gray-600 border-gray-200'
                   ]"
                   @click.stop="!svOrderLocked[st] && svChipClick(st, uid)"
                 >{{ getUserCode(uid) || '?' }}</div>
               </div>
               <span v-if="svGetExtras(st) > 0" class="text-xs text-gray-400 shrink-0">+{{ svGetExtras(st) }}</span>
+              <span v-else-if="svOffPreview.length > 0" class="text-xs text-green-500 shrink-0" title="均等整除，下月從同一起點開始">↺</span>
               <span v-if="svOrderLocked[st]" class="text-amber-500 shrink-0 text-xs">🔒</span>
             </div>
             <!-- Inline confirm banner -->
@@ -857,9 +866,23 @@ async function getEffectiveRotationPools(yyyyMM) {
   return gapMonths.length > 0 ? simulatePoolsThrough(basePools, gapMonths) : basePools
 }
 
+// Returns true only if NO weekend (sat/sun) cell has a D or N assignment yet
+function isWeekendsEmpty(data, yyyyMM) {
+  const weekendKeys = getMonthDays(yyyyMM)
+    .filter(({ dateStr }) => {
+      const t = getDayType(dateStr, holidays.value)
+      return t === 'saturday' || t === 'sunday'
+    })
+    .map(({ day }) => `day_${day}`)
+  return !Object.values(data).some(row =>
+    weekendKeys.some(k => row[k] === 'D' || row[k] === 'N')
+  )
+}
+
 async function autoFillWeekends() {
   if (scheduleStore.isLocked) return
-  if (!isScheduleEmpty(scheduleStore.scheduleData)) return
+  if (scheduleStore.meta?.weekendFilled) return           // already intentionally filled
+  if (!isWeekendsEmpty(scheduleStore.scheduleData, scheduleStore.currentMonth)) return
   const pools = await getEffectiveRotationPools(scheduleStore.currentMonth)
   await autoSchedule.runAutoSchedule(pools)
 }
@@ -930,7 +953,8 @@ async function onMonthChange(yyyyMM) {
   ])
   const year = parseInt(yyyyMM.slice(0, 4))
   await fetchHolidays(year)
-  await autoFillWeekends()
+  // C: Do NOT auto-fill weekends on month switch — only auto-fill on first mount.
+  // Manual re-fill is always available via the 重排六日 button.
   if (canManageRotation.value && !scheduleStore.isLocked) {
     await svInitOrderFromRecord(yyyyMM) // rotation order (chip display) — must finish before svCalcOff
     svCalcOff()                         // extras count + quota preview — fire-and-forget
@@ -1276,12 +1300,30 @@ function svUnlockAll() {
   Object.keys(svOrderLocked.value).forEach(k => { svOrderLocked.value[k] = false })
 }
 
+// Reset all rotation orders to the current active user list (for personnel changes / full resets)
+function svResetAllOrders() {
+  svResetOrders.value = { D: [], N: [], Off: [], W6Off: [] }
+  svOrderLocked.value = { D: false, N: false, Off: false, W6Off: false }
+  svPendingReset.value = null
+  svResetModified.value = { D: true, N: true, Off: true, W6Off: true }
+}
+
 // Initialise svResetOrders from the most recent saved rotationRecord.
 // 1. Current month has a rotationRecord → use it directly.
 // 2. No record for current month → search backwards, advance order by extras, project to current month.
 // 3. No record found at all → leave empty (falls back to user list in svGetDisplayOrder).
 async function svInitOrderFromRecord(yyyyMM) {
   const SHIFT_TYPES = ['D', 'N', 'Off', 'W6Off']
+  const activeIds = svActiveUsers.value.map(u => u.userId)
+
+  // Reconcile a stored order with the current active user list:
+  // - filter out departed users
+  // - append new users (not in record) at the end
+  function reconcileOrder(order) {
+    const filtered = order.filter(uid => activeIds.includes(uid))
+    const newUsers = activeIds.filter(uid => !order.includes(uid))
+    return [...filtered, ...newUsers]
+  }
 
   function applyOrders(orders) {
     SHIFT_TYPES.forEach(st => {
@@ -1296,7 +1338,7 @@ async function svInitOrderFromRecord(yyyyMM) {
   if (existingRecord && SHIFT_TYPES.some(st => Array.isArray(existingRecord[st]?.order) && existingRecord[st].order.length > 0)) {
     const orders = {}
     SHIFT_TYPES.forEach(st => {
-      if (Array.isArray(existingRecord[st]?.order)) orders[st] = existingRecord[st].order
+      if (Array.isArray(existingRecord[st]?.order)) orders[st] = reconcileOrder(existingRecord[st].order)
     })
     applyOrders(orders)
     return
@@ -1319,7 +1361,7 @@ async function svInitOrderFromRecord(yyyyMM) {
 
     // 3. Chain through gap months: from foundMonth+1 up to yyyyMM-1
     // For each uncommitted gap month M, compute extras = totals[st] % n and rotate
-    const n = svActiveUsers.value.length
+    const n = activeIds.length
     if (n > 0 && foundMonth) {
       // Ensure holiday data is loaded for any year spanned by the gap
       const gapYears = new Set()
@@ -1346,6 +1388,10 @@ async function svInitOrderFromRecord(yyyyMM) {
       }
     }
 
+    // Reconcile with current active users after all gap-month rotations
+    SHIFT_TYPES.forEach(st => {
+      if (orders[st]) orders[st] = reconcileOrder(orders[st])
+    })
     applyOrders(orders)
   } catch (e) {
     // Non-critical — silent fallback to user list
@@ -1383,6 +1429,13 @@ function svIsEnd(st, userId) {
   const ex = svGetExtras(st)
   if (ex <= 0) return false
   return svGetDisplayOrder(st)[ex - 1] === userId
+}
+
+// extras = 0: the last chip completes the full cycle and wraps back to the start next month
+function svIsFullCycleEnd(st, userId) {
+  if (svGetExtras(st) !== 0 || svOffPreview.length === 0) return false
+  const order = svGetDisplayOrder(st)
+  return order.length > 1 && order[order.length - 1] === userId
 }
 </script>
 

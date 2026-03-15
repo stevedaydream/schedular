@@ -16,7 +16,10 @@
       "Bash(python --version 2>&1 && python -c \"import openpyxl; print\\('openpyxl ok'\\)\" 2>&1)",
       "Bash(python -c \"\nimport openpyxl\nwb = openpyxl.load_workbook\\(r'C:\\\\Users\\\\User\\\\OneDrive\\\\文件\\\\9A值班表\\(排班用、預班\\)-9A9B combind .xlsm', read_only=True, keep_vba=False, data_only=True\\)\nprint\\('Sheets:', wb.sheetnames\\)\n\")",
       "Bash(cd \"G:/project/scheduler/tools\" && python parse_schedule_excel.py 2>&1)",
-      "Bash(copy \"C:\\\\Users\\\\User\\\\OneDrive\\\\文件\\\\9A值班表\\(排班用、預班\\)-9A9B combind .xlsm\" \"G:\\\\project\\\\scheduler\\\\tools\\\\schedule_temp.xlsm\" 2>&1)"
+      "Bash(copy \"C:\\\\Users\\\\User\\\\OneDrive\\\\文件\\\\9A值班表\\(排班用、預班\\)-9A9B combind .xlsm\" \"G:\\\\project\\\\scheduler\\\\tools\\\\schedule_temp.xlsm\" 2>&1)",
+      "Bash(cd \"G:/project/scheduler\" && npm install --save-dev sharp 2>&1 | tail -5)",
+      "Bash(cd \"G:/project/scheduler\" && node -e \"require\\('sharp'\\); console.log\\('sharp ok'\\)\")",
+      "Bash(cd \"G:/project/scheduler\" && node scripts/generate-icons.js)"
     ]
   }
 }

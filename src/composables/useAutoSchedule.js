@@ -77,11 +77,12 @@ export function useAutoSchedule(scheduleStore, settingsStore) {
         })
       })
 
-      // Save to GAS
+      // Save to GAS; weekendFilled=true prevents accidental re-fill on re-navigation
       const saved = await scheduleStore.batchSaveShifts({
         shifts: batchData,
         cellNotes: result.cellNotes,
-        updatedPools: result.updatedPools
+        updatedPools: result.updatedPools,
+        metaUpdates: { weekendFilled: true }
       })
 
       return saved
