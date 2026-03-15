@@ -61,34 +61,60 @@
         <div v-else-if="allSwaps.length === 0" class="text-center py-8 text-gray-400">
           目前沒有換班紀錄
         </div>
-        <div v-else class="space-y-2">
+        <div v-else class="space-y-3">
           <div
             v-for="swap in allSwaps"
             :key="swap.notificationId"
-            class="card flex items-center justify-between"
+            class="card"
           >
-            <div>
-              <div class="flex items-center gap-2">
-                <span
-                  :class="[
-                    'text-xs px-2 py-0.5 rounded-full font-medium',
-                    statusClass(swap.status)
-                  ]"
-                >
-                  {{ statusLabel(swap.status) }}
-                </span>
-                <span class="text-sm text-gray-700">
-                  {{ formatMonth(swap.yyyyMM) }} 第 {{ swap.day }} 天
+            <!-- Header -->
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span
+                    :class="[
+                      'text-xs px-2 py-0.5 rounded-full font-medium',
+                      statusClass(swap.status)
+                    ]"
+                  >{{ statusLabel(swap.status) }}</span>
+                  <span class="text-sm text-gray-700">
+                    {{ formatMonth(swap.yyyyMM) }} 第 {{ swap.day }} 天
+                  </span>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">
+                  {{ getUserName(swap.fromUserId) }} → {{ getUserName(swap.toUserId) }} ·
+                  {{ swap.fromShift }} ↔ {{ swap.toShift }}
+                </p>
+              </div>
+              <span class="text-xs text-gray-400 shrink-0">{{ formatDate(swap.createdAt) }}</span>
+            </div>
+
+            <!-- Timeline (only for swaps I initiated) -->
+            <div
+              v-if="swap.fromUserId === authStore.user?.userId"
+              class="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-1.5"
+            >
+              <!-- Step 1: submitted -->
+              <div class="flex items-center gap-2 text-xs">
+                <span class="w-3 h-3 rounded-full bg-blue-500 shrink-0"></span>
+                <span class="text-gray-700 font-medium">已提出申請</span>
+                <span class="text-gray-400">{{ formatDateTime(swap.createdAt) }}</span>
+              </div>
+              <!-- Step 2: waiting / replied -->
+              <div class="flex items-center gap-2 text-xs">
+                <span :class="['w-3 h-3 rounded-full border-2 shrink-0', swap.status !== 'pending' ? 'bg-blue-500 border-blue-500' : 'border-gray-300 bg-white']"></span>
+                <span :class="swap.status !== 'pending' ? 'text-gray-700 font-medium' : 'text-gray-400'">
+                  {{ swap.status !== 'pending' ? '對方已回覆' : '等待對方回覆…' }}
                 </span>
               </div>
-              <p class="text-xs text-gray-500 mt-1">
-                {{ getUserName(swap.fromUserId) }} → {{ getUserName(swap.toUserId) }} ·
-                {{ swap.fromShift }} ↔ {{ swap.toShift }}
-              </p>
+              <!-- Step 3: result -->
+              <div v-if="swap.status !== 'pending'" class="flex items-center gap-2 text-xs">
+                <span :class="['w-3 h-3 rounded-full shrink-0', swap.status === 'accepted' || swap.status === 'done' ? 'bg-green-500' : 'bg-red-400']"></span>
+                <span :class="swap.status === 'accepted' || swap.status === 'done' ? 'text-green-700 font-medium' : 'text-red-600 font-medium'">
+                  {{ swap.status === 'accepted' || swap.status === 'done' ? '換班成功' : '已拒絕' }}
+                </span>
+              </div>
             </div>
-            <span class="text-xs text-gray-400">
-              {{ formatDate(swap.createdAt) }}
-            </span>
           </div>
         </div>
       </div>
@@ -148,6 +174,11 @@ function formatMonth(yyyyMM) {
 function formatDate(iso) {
   if (!iso) return ''
   return new Date(iso).toLocaleDateString('zh-TW')
+}
+
+function formatDateTime(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 function statusLabel(status) {

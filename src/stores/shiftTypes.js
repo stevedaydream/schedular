@@ -33,15 +33,28 @@ export const DEFAULT_SHIFT_TYPES = [
   { id: 'H3',  label: 'H3',  color: 'pink',   active: true, applicableDays: ['saturday'], quota: { saturday: 3 } },
 ]
 
+// 僅用於班別預約的排除選項，不儲存到 GAS 班別設定，不受 fetchShiftTypes 覆蓋
+const REQUEST_EXCLUSION_TYPES = [
+  { id: 'NO_DN', label: '勿值', color: 'red',    active: true, requestOnly: true, applicableDays: [], quota: {} },
+  { id: 'NO_D',  label: '勿D',  color: 'orange', active: true, requestOnly: true, applicableDays: [], quota: {} },
+  { id: 'NO_N',  label: '勿N',  color: 'purple', active: true, requestOnly: true, applicableDays: [], quota: {} },
+]
+
 export const useShiftTypesStore = defineStore('shiftTypes', () => {
   const shiftTypes = ref(DEFAULT_SHIFT_TYPES.map(t => ({ ...t, applicableDays: [...(t.applicableDays || [])], quota: { ...(t.quota || {}) } })))
   const loading = ref(false)
   const error = ref(null)
 
+  // 排班格用：GAS 管理的班別（不含排除選項）
   const activeTypes = computed(() => shiftTypes.value.filter(t => t.active !== false))
+  // 班別預約用：含硬編碼排除選項，不受 fetchShiftTypes 覆蓋
+  const requestTypes = computed(() => [...activeTypes.value, ...REQUEST_EXCLUSION_TYPES])
+
+  // 所有類型（含排除選項）供 label/color 查詢
+  const allTypes = computed(() => [...shiftTypes.value, ...REQUEST_EXCLUSION_TYPES])
 
   function getColor(id) {
-    const t = shiftTypes.value.find(t => t.id === id)
+    const t = allTypes.value.find(t => t.id === id)
     return t ? (COLOR_MAP[t.color] || COLOR_MAP.gray) : null
   }
 
@@ -62,7 +75,7 @@ export const useShiftTypesStore = defineStore('shiftTypes', () => {
    * @returns {number|null} null = 不設需求
    */
   function getRequiredCount(shiftId, dayType) {
-    const t = shiftTypes.value.find(t => t.id === shiftId)
+    const t = allTypes.value.find(t => t.id === shiftId)
     if (!t || !t.quota) return null
     const val = t.quota[dayType]
     return (val !== undefined && val !== null && val !== '') ? Number(val) : null
@@ -72,7 +85,7 @@ export const useShiftTypesStore = defineStore('shiftTypes', () => {
    * 判斷某班別是否適用於該日別
    */
   function isApplicable(shiftId, dayType) {
-    const t = shiftTypes.value.find(t => t.id === shiftId)
+    const t = allTypes.value.find(t => t.id === shiftId)
     if (!t) return true
     if (!t.applicableDays || t.applicableDays.length === 0) return true
     return t.applicableDays.includes(dayType)
@@ -114,7 +127,7 @@ export const useShiftTypesStore = defineStore('shiftTypes', () => {
   }
 
   return {
-    shiftTypes, activeTypes, loading, error,
+    shiftTypes, activeTypes, requestTypes, allTypes, loading, error,
     getCellClass, getActiveClass, getHoverClass,
     getRequiredCount, isApplicable,
     fetchShiftTypes, saveShiftTypes

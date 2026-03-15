@@ -64,23 +64,20 @@
             <div v-if="!notification.readAt" class="w-2 h-2 bg-blue-500 rounded-full mt-1 flex-shrink-0"></div>
           </div>
 
-          <!-- Actions for pending swap requests -->
+          <!-- Redirect to swap page for pending requests -->
           <div
             v-if="notification.type === 'swap_request' && notification.status === 'pending'"
-            class="mt-3 flex gap-2"
+            class="mt-3"
             @click.stop
           >
             <button
-              @click="respondSwap(notification.notificationId, true)"
-              class="text-sm bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700"
+              @click="router.push('/swap')"
+              class="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
             >
-              接受換班
-            </button>
-            <button
-              @click="respondSwap(notification.notificationId, false)"
-              class="text-sm bg-red-500 text-white px-3 py-1.5 rounded-md hover:bg-red-600"
-            >
-              拒絕換班
+              前往換班頁處理
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+              </svg>
             </button>
           </div>
         </div>
@@ -91,12 +88,14 @@
 
 <script setup>
 import { onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useNotificationStore } from '../stores/notification.js'
 import { useAuthStore } from '../stores/auth.js'
 import { useSettingsStore } from '../stores/settings.js'
 import { formatMonthDisplay } from '../utils/dateHelper.js'
 import NavBar from '../components/common/NavBar.vue'
 
+const router = useRouter()
 const notificationStore = useNotificationStore()
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
@@ -174,9 +173,6 @@ function handleRead(notification) {
   }
 }
 
-async function respondSwap(notificationId, accept) {
-  await notificationStore.respondSwap(notificationId, accept)
-}
 
 onMounted(async () => {
   await settingsStore.fetchUsers()

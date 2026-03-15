@@ -13,6 +13,7 @@ export const useScheduleStore = defineStore('schedule', () => {
   const meta = ref({})           // { isLocked, lockedBy, cellNotes, offQuota }
   const loading = ref(false)
   const error = ref(null)
+  const fetchedAt = ref(null)    // Date of last successful fetch
 
   const shiftRows = computed(() => scheduleData.value)
 
@@ -29,6 +30,7 @@ export const useScheduleStore = defineStore('schedule', () => {
       scheduleData.value = result.data.schedule || {}
       meta.value = result.data.meta || {}
       isLocked.value = meta.value.isLocked === true || meta.value.isLocked === 'true'
+      fetchedAt.value = new Date()
     } catch (err) {
       error.value = err.message || '取得班表時發生錯誤'
     } finally {
@@ -168,6 +170,7 @@ export const useScheduleStore = defineStore('schedule', () => {
     meta,
     loading,
     error,
+    fetchedAt,
     shiftRows,
     fetchSchedule,
     saveShift,

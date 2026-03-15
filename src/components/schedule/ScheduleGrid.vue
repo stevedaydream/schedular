@@ -229,7 +229,12 @@ const props = defineProps({
 
 const emit = defineEmits(['update-shift', 'reorder-users'])
 
-const monthDays = computed(() => getMonthDays(props.currentMonth))
+const monthDays = computed(() =>
+  getMonthDays(props.currentMonth).map(d => ({
+    ...d,
+    dayType: getDayType(d.dateStr, props.holidays)
+  }))
+)
 
 const sortedUsers = computed(() =>
   [...props.users]

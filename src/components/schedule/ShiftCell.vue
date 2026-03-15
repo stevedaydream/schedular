@@ -99,7 +99,8 @@ const props = defineProps({
   dayCounts: { type: Object, default: null },
   dayRequired: { type: Object, default: null },
   requestShift: { type: String, default: null },
-  isDisputedRequest: { type: Boolean, default: false }
+  isDisputedRequest: { type: Boolean, default: false },
+  includeRequestOnly: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['update'])
@@ -108,7 +109,8 @@ const shiftTypesStore = useShiftTypesStore()
 const hovered = ref(false)
 
 const radialOptions = computed(() => {
-  const opts = shiftTypesStore.activeTypes.map(t => ({
+  const types = props.includeRequestOnly ? shiftTypesStore.requestTypes : shiftTypesStore.activeTypes
+  const opts = types.map(t => ({
     value: t.id,
     label: t.label,
     activeClass: shiftTypesStore.getActiveClass(t.id)
@@ -124,7 +126,7 @@ const radialOptions = computed(() => {
 
 const displayValue = computed(() => {
   if (!props.shift) return ''
-  const t = shiftTypesStore.shiftTypes.find(t => t.id === props.shift)
+  const t = shiftTypesStore.allTypes.find(t => t.id === props.shift)
   return t ? t.label : props.shift
 })
 

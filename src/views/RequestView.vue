@@ -14,6 +14,15 @@
         </div>
       </div>
 
+      <!-- Month info banner -->
+      <div class="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800 flex flex-wrap items-center gap-2">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span>您正在預約 <strong>{{ requestMonthLabel }}</strong> 的班別，排班者將參考此表安排班別。</span>
+        <span v-if="isCurrentMonth" class="text-xs text-blue-500">（本月）</span>
+      </div>
+
       <!-- Locked notice -->
       <div
         v-if="scheduleStore.isLocked"
@@ -28,9 +37,12 @@
 
       <!-- All users request grid (own row editable, others read-only) -->
       <div v-else class="card overflow-x-auto">
-        <div class="flex items-center gap-4 mb-3 text-xs text-gray-500">
+        <div class="flex items-center gap-4 mb-3 text-xs text-gray-500 flex-wrap">
           <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-orange-100 border border-orange-300 rounded-sm"></span>爭議（超額預約）</span>
-          <span>點擊自己的格子循環切換班別</span>
+          <span class="flex items-center gap-1"><span class="inline-block px-1 rounded bg-red-100 text-red-800 font-medium">勿值</span>不排D或N</span>
+          <span class="flex items-center gap-1"><span class="inline-block px-1 rounded bg-orange-100 text-orange-800 font-medium">勿D</span>不排D班</span>
+          <span class="flex items-center gap-1"><span class="inline-block px-1 rounded bg-purple-100 text-purple-800 font-medium">勿N</span>不排N班</span>
+          <span>點擊格子選擇班別偏好</span>
         </div>
         <table class="text-xs border-collapse w-max min-w-full">
           <thead>
@@ -83,6 +95,7 @@
                   :isEditable="!scheduleStore.isLocked && (authStore.isScheduler || user.userId === authStore.user?.userId)"
                   :isOverBooked="isUserDayDisputed(user.userId, dayInfo.day)"
                   :requestShift="getRotationRef(user.userId, dayInfo.day)"
+                  :includeRequestOnly="true"
                   @update="(shift) => handleUpdateRequest(user.userId, dayInfo.day, shift)"
                 />
               </td>
@@ -135,6 +148,15 @@ const minRequestMonth = getCurrentYYYYMM()
 const projectedShifts = ref({})
 
 const monthDays = computed(() => getMonthDays(requestStore.currentMonth))
+
+const requestMonthLabel = computed(() => {
+  const ym = requestStore.currentMonth
+  if (!ym) return ''
+  return `${ym.slice(0, 4)} 年 ${parseInt(ym.slice(4))} 月`
+})
+
+const currentYYYYMM = getCurrentYYYYMM()
+const isCurrentMonth = computed(() => requestStore.currentMonth === currentYYYYMM)
 
 const sortedUsers = computed(() =>
   [...settingsStore.users]

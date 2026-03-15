@@ -5,10 +5,18 @@
     <main class="max-w-full px-4 py-6 print:p-0">
       <!-- Header controls -->
       <div class="flex flex-wrap items-center justify-between gap-4 mb-6 print:hidden">
-        <MonthSwitcher
-          :currentMonth="scheduleStore.currentMonth"
-          @change="onMonthChange"
-        />
+        <div class="flex items-center gap-3">
+          <MonthSwitcher
+            :currentMonth="scheduleStore.currentMonth"
+            @change="onMonthChange"
+          />
+          <span
+            v-if="monthStatus"
+            class="text-xs border rounded-full px-3 py-1 font-medium"
+            :class="monthStatus.cls"
+          >{{ monthStatus.label }}</span>
+          <span v-if="fetchedAgo" class="text-xs text-gray-400">更新：{{ fetchedAgo }}</span>
+        </div>
 
         <div class="flex items-center gap-2 flex-wrap">
           <!-- Auto-filling indicator -->
@@ -79,6 +87,8 @@
               <p>清除本月週六／週日的 D、N 班，依目前輪序池重新填入。</p>
               <p class="mt-1 text-gray-300">平日、假日及其他班別不受影響。</p>
               <p class="mt-1 text-gray-300">使用時機：在輪序管理調整順序後套用。</p>
+              <hr class="border-gray-600 my-1.5"/>
+              <p class="text-gray-400 text-xs">六日輪序：決定週六日由誰上 D / N 班（點名制）。<br>與配額輪序獨立運作，不互相影響。</p>
             </div>
           </div>
 
@@ -117,6 +127,20 @@
             </div>
           </div>
 
+          <!-- Request overlay toggle -->
+          <button
+            @click="showRequestOverlay = !showRequestOverlay"
+            class="btn-secondary text-sm flex items-center gap-1.5"
+            :class="showRequestOverlay ? 'ring-1 ring-blue-300' : ''"
+            title="顯示/隱藏員工預約角標"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+            </svg>
+            {{ showRequestOverlay ? '隱藏預約' : '顯示預約' }}
+          </button>
+
           <!-- Confirm requests -->
           <div v-if="!scheduleStore.isLocked && pendingRequests.length > 0" class="relative group">
             <button
@@ -136,6 +160,18 @@
               </ul>
             </div>
           </div>
+
+          <!-- Export CSV -->
+          <button
+            @click="exportCSV"
+            class="btn-secondary text-sm flex items-center gap-1.5"
+            title="匯出班表為 CSV"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            CSV
+          </button>
 
           <!-- Print -->
           <div class="relative group">
@@ -255,10 +291,36 @@
       >
         <!-- Header row -->
         <div class="px-4 py-2.5 border-b border-gray-100 flex flex-wrap items-center gap-2 justify-between">
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5">
             <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">配額輪序管理</span>
-            <span v-if="offLocked" class="text-xs text-amber-600 flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">🔒 已鎖定</span>
+            <div class="relative group">
+              <span class="w-4 h-4 inline-flex items-center justify-center rounded-full bg-gray-100 text-gray-400 text-xs cursor-help font-bold leading-none">?</span>
+              <div class="tooltip-box w-72">
+                <p class="font-semibold mb-1">配額輪序（D / N / Off / W6Off）</p>
+                <p class="text-gray-300">決定這個月誰多排一次 D / N / Off — 依累計餘數公平輪替，確保每人長期總量均等。</p>
+                <p class="mt-1 text-gray-400 text-xs">與六日自動填入獨立運作，不互相影響。</p>
+              </div>
+            </div>
           </div>
+          <!-- Step guide -->
+          <div class="flex items-center gap-1 text-xs">
+            <!-- Step 1: 試算 -->
+            <div :class="['flex items-center gap-1 px-2 py-0.5 rounded-full border transition-colors', svOffPreview.length > 0 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-blue-50 border-blue-200 text-blue-700 font-semibold']">
+              <span>①</span>
+              <span>{{ svOffLoading ? '計算中...' : svOffPreview.length > 0 ? '✓ 試算' : '試算' }}</span>
+            </div>
+            <span class="text-gray-300">›</span>
+            <!-- Step 2: 帶入 -->
+            <div :class="['flex items-center gap-1 px-2 py-0.5 rounded-full border transition-colors', offLocked ? 'bg-green-50 border-green-200 text-green-700' : svOffPreview.length > 0 ? 'bg-blue-50 border-blue-200 text-blue-700 font-semibold' : 'border-gray-200 text-gray-400']">
+              <span>②</span><span>{{ offLocked ? '✓ 已帶入' : '帶入' }}</span>
+            </div>
+            <span class="text-gray-300">›</span>
+            <!-- Step 3: 結算 -->
+            <div :class="['flex items-center gap-1 px-2 py-0.5 rounded-full border transition-colors', scheduleStore.meta?.rotationRecord ? 'bg-green-50 border-green-200 text-green-700' : offLocked ? 'bg-blue-50 border-blue-200 text-blue-700 font-semibold' : 'border-gray-200 text-gray-400']">
+              <span>③</span><span>{{ scheduleStore.meta?.rotationRecord ? '✓ 已結算' : '結算' }}</span>
+            </div>
+          </div>
+          <!-- Action buttons -->
           <div class="flex flex-wrap items-center gap-1.5">
             <button
               @click="svCalcOff"
@@ -474,7 +536,7 @@
         :currentMonth="scheduleStore.currentMonth"
         :meta="scheduleStore.meta"
         :isEditable="!scheduleStore.isLocked"
-        :requestData="requestStore.requestData"
+        :requestData="showRequestOverlay ? requestStore.requestData : {}"
         @update-shift="handleUpdateShift"
         @reorder-users="handleReorderUsers"
       />
@@ -603,16 +665,86 @@
       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
     >
       <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
-        <h3 class="text-lg font-semibold mb-2 text-red-600">確認清除班表</h3>
-        <p class="text-gray-600 mb-1 text-sm">
-          將清除 <strong>{{ scheduleStore.currentMonth.slice(0,4) }} 年 {{ scheduleStore.currentMonth.slice(4) }} 月</strong> 所有班別資料。
-        </p>
+        <h3 class="text-lg font-semibold mb-1 text-red-600">清除班表</h3>
+        <p class="text-xs text-gray-400 mb-4">{{ scheduleStore.currentMonth.slice(0,4) }} 年 {{ parseInt(scheduleStore.currentMonth.slice(4)) }} 月</p>
+
+        <!-- Mode selection -->
+        <div class="space-y-2 mb-4">
+          <label
+            :class="['flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors', clearMode === 'weekday' ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:border-gray-300']"
+          >
+            <input type="radio" v-model="clearMode" value="weekday" class="mt-0.5"/>
+            <div>
+              <p class="text-sm font-medium text-gray-800">僅清除平日班別</p>
+              <p class="text-xs text-gray-500">保留六日 D / N 班（六日輪序結果）</p>
+            </div>
+          </label>
+          <label
+            :class="['flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors', clearMode === 'all' ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-gray-300']"
+          >
+            <input type="radio" v-model="clearMode" value="all" class="mt-0.5"/>
+            <div>
+              <p class="text-sm font-medium text-gray-800">清除全部班別（含六日）</p>
+              <p class="text-xs text-gray-500">清除後可選擇是否重填六日輪序</p>
+            </div>
+          </label>
+        </div>
+
+        <p class="text-xs text-gray-500 mb-1">將清除 <strong class="text-red-600">{{ clearableCount }}</strong> 個已排格子。</p>
         <p class="text-red-500 text-xs mb-4">此操作無法復原，請確認後再執行。</p>
         <div class="flex gap-2 justify-end">
           <button @click="showClearConfirm = false" class="btn-secondary">取消</button>
           <button @click="handleClear" :disabled="clearing" class="btn-danger">
             {{ clearing ? '清除中...' : '確認清除' }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Post-clear refill prompt -->
+    <div v-if="showRefillPrompt" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+        <h3 class="text-lg font-semibold mb-2">是否重填六日輪序？</h3>
+        <p class="text-sm text-gray-600 mb-4">清除完成。是否依現有輪序池重新填入本月六日 D / N 班？</p>
+        <div class="flex gap-2 justify-end">
+          <button @click="showRefillPrompt = false" class="btn-secondary">不填入</button>
+          <button @click="() => { showRefillPrompt = false; autoFillWeekends() }" class="btn-primary">重填六日輪序</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lock confirm modal -->
+    <div v-if="showLockConfirm" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+        <h3 class="text-lg font-semibold mb-1">確認鎖定班表</h3>
+        <p class="text-xs text-gray-400 mb-4">{{ scheduleStore.currentMonth.slice(0,4) }} 年 {{ parseInt(scheduleStore.currentMonth.slice(4)) }} 月</p>
+
+        <div class="space-y-2 mb-4 text-sm">
+          <!-- shift totals -->
+          <div class="flex flex-wrap gap-3 p-3 bg-gray-50 rounded-lg">
+            <span>日班 <strong class="text-blue-700">{{ lockSummary?.totals.D }}</strong></span>
+            <span>夜班 <strong class="text-indigo-700">{{ lockSummary?.totals.N }}</strong></span>
+            <span>休假 <strong class="text-gray-600">{{ lockSummary?.totals.Off }}</strong></span>
+            <span v-if="lockSummary?.totals.AM > 0">AM <strong class="text-purple-700">{{ lockSummary?.totals.AM }}</strong></span>
+          </div>
+          <!-- warnings -->
+          <div v-if="lockSummary?.empty > 0" class="flex items-center gap-2 text-orange-600 text-xs">
+            <span class="font-bold">⚠</span> {{ lockSummary.empty }} 個格子尚未排班
+          </div>
+          <div v-if="lockSummary?.anomalyCount > 0" class="flex items-center gap-2 text-orange-600 text-xs">
+            <span class="font-bold">⚠</span> {{ lockSummary.anomalyCount }} 個人力不足異常日
+          </div>
+          <div v-if="!lockSummary?.hasRecord" class="flex items-center gap-2 text-amber-600 text-xs">
+            <span class="font-bold">⚠</span> 配額輪序尚未結算
+          </div>
+          <div v-if="lockSummary?.empty === 0 && lockSummary?.anomalyCount === 0 && lockSummary?.hasRecord" class="flex items-center gap-2 text-green-600 text-xs">
+            <span>✓</span> 班表完整，可安心鎖定
+          </div>
+        </div>
+
+        <div class="flex gap-2 justify-end">
+          <button @click="showLockConfirm = false" class="btn-secondary">取消</button>
+          <button @click="confirmLock" class="btn-primary">確認鎖定</button>
         </div>
       </div>
     </div>
@@ -651,7 +783,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useScheduleStore } from '../stores/schedule.js'
 import { useSettingsStore } from '../stores/settings.js'
 import { useAuthStore } from '../stores/auth.js'
@@ -681,8 +813,40 @@ const showHealthModal = ref(false)
 const showRotationRecord = ref(false)
 const showClearConfirm = ref(false)
 const clearing = ref(false)
+const clearMode = ref('all') // 'weekday' | 'all'
+const showRefillPrompt = ref(false)
+
+const clearableCount = computed(() => {
+  const data = scheduleStore.scheduleData
+  const days = getMonthDays(scheduleStore.currentMonth)
+  const activeUsers = settingsStore.users.filter(u => u.isActive !== false && u.isActive !== 'false')
+  let count = 0
+  activeUsers.forEach(u => {
+    days.forEach(({ day, dayOfWeek, dateStr }) => {
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+      if (clearMode.value === 'weekday' && isWeekend) return
+      const v = data[u.userId]?.[`day_${day}`]
+      if (v) count++
+    })
+  })
+  return count
+})
 const showRequestPanel = ref(false)
+const showRequestOverlay = ref(true)
 const confirmingRequests = ref(false)
+
+const _now = ref(Date.now())
+let _nowTimer = null
+onMounted(() => { _nowTimer = setInterval(() => { _now.value = Date.now() }, 30000) })
+onUnmounted(() => clearInterval(_nowTimer))
+
+const fetchedAgo = computed(() => {
+  const t = scheduleStore.fetchedAt
+  if (!t) return null
+  const mins = Math.floor((_now.value - t.getTime()) / 60000)
+  if (mins < 1) return '剛剛'
+  return `${mins} 分鐘前`
+})
 
 // All non-disputed requests (ready to be bulk-confirmed)
 const pendingRequests = computed(() => {
@@ -772,6 +936,16 @@ const transferableUsers = computed(() =>
     u => u.userId !== authStore.user?.userId && u.isActive !== false
   )
 )
+
+const monthStatus = computed(() => {
+  const locked = scheduleStore.isLocked
+  const hasRecord = !!scheduleStore.meta?.rotationRecord
+  const empty = isScheduleEmpty(scheduleStore.scheduleData)
+  if (locked && hasRecord) return { label: '✓ 已結算', cls: 'bg-gray-100 text-gray-600 border-gray-300' }
+  if (locked) return { label: '🔒 已鎖定', cls: 'bg-green-100 text-green-700 border-green-300' }
+  if (empty) return { label: '未填入', cls: 'bg-orange-100 text-orange-700 border-orange-300' }
+  return { label: '排班中', cls: 'bg-blue-100 text-blue-700 border-blue-300' }
+})
 
 function isScheduleEmpty(data) {
   if (!data || Object.keys(data).length === 0) return true
@@ -981,7 +1155,61 @@ function printSchedule() {
   window.print()
 }
 
-async function handleLock() {
+function exportCSV() {
+  const yyyyMM = scheduleStore.currentMonth
+  const days = getMonthDays(yyyyMM)
+  const activeUsers = settingsStore.users
+    .filter(u => u.isActive !== false && u.isActive !== 'false')
+    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+  // Header row: 姓名, 1, 2, 3, ..., 31
+  const header = ['姓名', ...days.map(d => d.day)].join(',')
+  const rows = activeUsers.map(u => {
+    const name = (u.name || u.userId).replace(/,/g, '，')
+    const cells = days.map(({ day }) => scheduleStore.scheduleData[u.userId]?.[`day_${day}`] || '')
+    return [name, ...cells].join(',')
+  })
+  const csv = '\uFEFF' + [header, ...rows].join('\r\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `schedule_${yyyyMM}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const showLockConfirm = ref(false)
+
+const lockSummary = computed(() => {
+  const data = scheduleStore.scheduleData
+  const days = getMonthDays(scheduleStore.currentMonth)
+  const activeUserIds = settingsStore.users
+    .filter(u => u.isActive !== false && u.isActive !== 'false')
+    .map(u => u.userId)
+  let empty = 0
+  const totals = { D: 0, N: 0, Off: 0, AM: 0 }
+  activeUserIds.forEach(uid => {
+    days.forEach(({ day }) => {
+      const v = data[uid]?.[`day_${day}`]
+      if (!v) empty++
+      else if (totals[v] !== undefined) totals[v]++
+    })
+  })
+  return {
+    empty,
+    totals,
+    anomalyCount: health.value?.anomalies?.length || 0,
+    overQuotaCount: health.value?.overQuota?.length || 0,
+    hasRecord: !!scheduleStore.meta?.rotationRecord
+  }
+})
+
+function handleLock() {
+  showLockConfirm.value = true
+}
+
+async function confirmLock() {
+  showLockConfirm.value = false
   await scheduleStore.lockSchedule(scheduleStore.currentMonth)
 }
 
@@ -991,11 +1219,31 @@ async function handleUnlock() {
 
 async function handleClear() {
   clearing.value = true
-  const ok = await scheduleStore.clearSchedule(scheduleStore.currentMonth)
-  clearing.value = false
-  if (ok) {
+  if (clearMode.value === 'weekday') {
+    // Weekday-only: batch-save null for weekday cells locally
+    const days = getMonthDays(scheduleStore.currentMonth)
+    const activeUsers = settingsStore.users.filter(u => u.isActive !== false && u.isActive !== 'false')
+    const shifts = []
+    activeUsers.forEach(u => {
+      days.forEach(({ day, dayOfWeek }) => {
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+        if (isWeekend) return
+        const current = scheduleStore.scheduleData[u.userId]?.[`day_${day}`]
+        if (current) shifts.push({ userId: u.userId, day, shift: null })
+      })
+    })
+    if (shifts.length > 0) {
+      await scheduleStore.batchSaveShifts(shifts)
+    }
+    clearing.value = false
     showClearConfirm.value = false
-    await autoFillWeekends()
+  } else {
+    const ok = await scheduleStore.clearSchedule(scheduleStore.currentMonth)
+    clearing.value = false
+    if (ok) {
+      showClearConfirm.value = false
+      showRefillPrompt.value = true
+    }
   }
 }
 
