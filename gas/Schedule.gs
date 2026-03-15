@@ -440,6 +440,77 @@ var Schedule = (function () {
     }
   }
 
+  // ─── Rotation Record Lookup ────────────────────────────────────────────────
+
+  function getRecentRotationRecord(params) {
+    var targetYYYYMM = params.yyyyMM;
+    if (!targetYYYYMM) return { success: false, error: '缺少 yyyyMM 參數' };
+    var maxBack = parseInt(params.maxBack) || 24;
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    function readRecord(yyyyMM) {
+      var metaSheet = ss.getSheetByName('ScheduleMeta_' + yyyyMM);
+      if (!metaSheet) return null;
+      var metaRows = sheetToObjects(metaSheet);
+      var row = metaRows.find(function(r) { return r.key === 'rotationRecord'; });
+      if (!row || !row.value) return null;
+      try { return JSON.parse(row.value); } catch (e) { return null; }
+    }
+
+    function prevMonthStr(yyyyMM) {
+      var y = parseInt(yyyyMM.slice(0, 4));
+      var m = parseInt(yyyyMM.slice(4, 6));
+      return m === 1
+        ? String(y - 1) + '12'
+        : String(y) + String(m - 1).padStart(2, '0');
+    }
+
+    function nextMonthStr(yyyyMM) {
+      var y = parseInt(yyyyMM.slice(0, 4));
+      var m = parseInt(yyyyMM.slice(4, 6));
+      return m === 12
+        ? String(y + 1) + '01'
+        : String(y) + String(m + 1).padStart(2, '0');
+    }
+
+    // Step 1: Search backwards for most recent rotationRecord before targetYYYYMM
+    var foundMonth = null;
+    var foundRecord = null;
+    var cur = prevMonthStr(targetYYYYMM);
+    for (var i = 0; i < maxBack; i++) {
+      var rec = readRecord(cur);
+      if (rec) { foundMonth = cur; foundRecord = rec; break; }
+      cur = prevMonthStr(cur);
+    }
+
+    if (!foundRecord) {
+      return { success: true, data: { foundMonth: null, projectedMonth: null, record: null } };
+    }
+
+    // Step 2: Scan forward from foundMonth+1 to targetYYYYMM-1, picking up any newer records
+    var scanMonth = nextMonthStr(foundMonth);
+    while (scanMonth < targetYYYYMM) {
+      var intermediateRec = readRecord(scanMonth);
+      if (intermediateRec) { foundMonth = scanMonth; foundRecord = intermediateRec; }
+      scanMonth = nextMonthStr(scanMonth);
+    }
+
+    // Step 3: Advance the order by foundRecord's extras — next month starts after endUserId
+    var SHIFT_TYPES = ['D', 'N', 'Off', 'W6Off'];
+    var projected = {};
+    SHIFT_TYPES.forEach(function(st) {
+      var entry = foundRecord[st];
+      if (!entry || !Array.isArray(entry.order) || entry.order.length === 0) return;
+      var order = entry.order;
+      var extras = entry.extras || 0;
+      // Rotate: next cycle's start is the person at position `extras`
+      var rotated = order.slice(extras).concat(order.slice(0, extras));
+      projected[st] = { order: rotated, extras: 0 };
+    });
+
+    return { success: true, data: { foundMonth: foundMonth, projectedMonth: targetYYYYMM, record: projected } };
+  }
+
   return {
     getSchedule,
     saveShift,
@@ -450,7 +521,8 @@ var Schedule = (function () {
     getHolidays,
     saveHolidays,
     saveHolidayDuty,
-    getGovHolidays
+    getGovHolidays,
+    getRecentRotationRecord
   };
 
 })();

@@ -683,6 +683,173 @@
           </div>
         </div>
       </div>
+
+      <!-- Backup Export -->
+      <div v-if="activeTab === 'backup'">
+        <div class="card">
+          <h3 class="text-base font-semibold mb-1">備份匯出</h3>
+          <p class="text-sm text-gray-500 mb-6">將資料匯出為 JSON 檔案，可用於備份或離線保存。</p>
+
+          <!-- Schedule backup -->
+          <div class="border border-gray-200 rounded-lg p-4 mb-4">
+            <div class="flex items-start gap-4">
+              <div class="flex-1">
+                <h4 class="font-medium text-gray-800 mb-1">班表備份</h4>
+                <p class="text-xs text-gray-500 mb-3">匯出指定月份的排班資料（班別、備注、元資料）</p>
+                <div class="flex items-center gap-3">
+                  <input
+                    type="month"
+                    class="input-field w-36 text-sm"
+                    :value="backupMonth.slice(0,4) + '-' + backupMonth.slice(4)"
+                    :max="`${new Date().getFullYear() + 1}-12`"
+                    @change="e => backupMonth = e.target.value.replace('-', '')"
+                  />
+                  <button
+                    @click="backupSchedule"
+                    :disabled="backupLoading === 'schedule' || !backupMonth"
+                    class="btn-primary text-sm flex items-center gap-2"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    {{ backupLoading === 'schedule' ? '匯出中...' : '下載班表 JSON' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Settings backup -->
+          <div class="border border-gray-200 rounded-lg p-4 mb-4">
+            <div class="flex items-start gap-4">
+              <div class="flex-1">
+                <h4 class="font-medium text-gray-800 mb-1">設定備份</h4>
+                <p class="text-xs text-gray-500 mb-3">匯出系統設定、班別設定及人員資料</p>
+                <button
+                  @click="backupSettings"
+                  :disabled="backupLoading === 'settings'"
+                  class="btn-secondary text-sm flex items-center gap-2"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                  </svg>
+                  {{ backupLoading === 'settings' ? '匯出中...' : '下載設定 JSON' }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Historical Import -->
+          <div class="border border-blue-200 bg-blue-50/30 rounded-lg p-4">
+            <h4 class="font-medium text-gray-800 mb-1">匯入歷史班表</h4>
+            <p class="text-xs text-gray-500 mb-3">
+              上傳由 <code class="bg-gray-100 px-1 rounded">parse_schedule_excel.py</code> 產生的
+              <code class="bg-gray-100 px-1 rounded">historical_import.json</code>，批量匯入歷史排班資料。
+            </p>
+
+            <!-- Step 1: Upload -->
+            <div v-if="!importData">
+              <label class="btn-secondary text-sm cursor-pointer flex items-center gap-2 w-fit">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                </svg>
+                選擇 JSON 檔案
+                <input type="file" accept=".json" class="hidden" @change="handleImportFile" />
+              </label>
+            </div>
+
+            <!-- Step 2: Preview & Configure -->
+            <div v-else>
+              <div class="text-xs text-gray-500 mb-3">
+                來源：{{ importData.generatedAt?.slice(0,10) }}　共 <strong>{{ Object.keys(importData.months).length }}</strong> 個月、<strong>{{ importData.codes.length }}</strong> 個代號
+              </div>
+
+              <!-- Code mapping table -->
+              <div class="mb-4">
+                <div class="text-xs font-semibold text-gray-600 mb-1.5">人員代號對應</div>
+                <div class="border border-gray-200 rounded overflow-hidden">
+                  <table class="w-full text-xs">
+                    <thead class="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th class="px-3 py-1.5 text-left">代號</th>
+                        <th class="px-3 py-1.5 text-left">對應人員</th>
+                        <th class="px-3 py-1.5 text-center w-16">匯入</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="code in importData.codes" :key="code" class="border-t border-gray-100">
+                        <td class="px-3 py-1 font-mono font-bold text-gray-700">{{ code }}</td>
+                        <td class="px-3 py-1">
+                          <span v-if="importGetUser(code)" class="text-green-700">
+                            ✓ {{ importGetUser(code).name }}
+                          </span>
+                          <span v-else class="text-orange-600">新人員（建立為離職）</span>
+                        </td>
+                        <td class="px-3 py-1 text-center">
+                          <input type="checkbox" v-model="importCodes[code]" />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Month selection -->
+              <div class="mb-4">
+                <div class="flex items-center gap-3 mb-2">
+                  <span class="text-xs font-semibold text-gray-600">選擇月份</span>
+                  <button @click="importSelectAll(true)" class="text-xs text-blue-600 hover:underline">全選</button>
+                  <button @click="importSelectAll(false)" class="text-xs text-gray-500 hover:underline">取消全選</button>
+                </div>
+                <div class="grid grid-cols-4 sm:grid-cols-6 gap-x-3 gap-y-1">
+                  <label
+                    v-for="yyyyMM in importSortedMonths"
+                    :key="yyyyMM"
+                    class="flex items-center gap-1 text-xs cursor-pointer"
+                  >
+                    <input type="checkbox" v-model="importMonths[yyyyMM]" />
+                    <span :class="importMonthShiftCount(yyyyMM) < 10 ? 'text-orange-500' : 'text-gray-700'">
+                      {{ yyyyMM.slice(0,4) }}/{{ yyyyMM.slice(4) }}
+                      <span v-if="importMonthShiftCount(yyyyMM) < 10" title="班別格數偏少，可能是未完整的月份">⚠</span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Actions -->
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  @click="startImport"
+                  :disabled="importLoading"
+                  class="btn-primary text-sm"
+                >
+                  {{ importLoading ? `匯入中 ${importProgress}/${importTotal}...` : '開始匯入' }}
+                </button>
+                <button @click="resetImport" :disabled="importLoading" class="btn-secondary text-sm">重新選擇</button>
+              </div>
+
+              <!-- Progress bar -->
+              <div v-if="importLoading" class="mt-3 h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  class="h-2 bg-blue-500 transition-all duration-300"
+                  :style="`width: ${importTotal > 0 ? Math.round(importProgress/importTotal*100) : 0}%`"
+                ></div>
+              </div>
+
+              <!-- Results -->
+              <div v-if="importDone" class="mt-3 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700">
+                ✓ 完成！成功匯入 {{ importDoneCount }} 個月。
+              </div>
+              <div v-if="importErrors.length" class="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-600">
+                <p class="font-semibold">{{ importErrors.length }} 個月失敗：</p>
+                <ul class="list-disc list-inside mt-1 space-y-0.5">
+                  <li v-for="e in importErrors" :key="e">{{ e }}</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 </template>
@@ -711,7 +878,8 @@ const tabs = [
   { id: 'users', label: '人員管理' },
   { id: 'shifts', label: '班別管理' },
   { id: 'rotation', label: '輪序管理' },
-  { id: 'holidays', label: '國定假日' }
+  { id: 'holidays', label: '國定假日' },
+  { id: 'backup', label: '備份匯出' }
 ]
 
 // ── Shift Types ─────────────────────────────────────────────
@@ -1413,6 +1581,191 @@ async function saveHolidaysToGAS() {
     alert('儲存失敗：' + err.message)
   } finally {
     savingHolidays.value = false
+  }
+}
+
+// ── Backup ──────────────────────────────────────────────────
+const backupMonth = ref((() => {
+  const d = new Date()
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`
+})())
+const backupLoading = ref('')
+
+function downloadJSON(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function backupSchedule() {
+  if (!backupMonth.value) return
+  backupLoading.value = 'schedule'
+  try {
+    const result = await api.getSchedule(backupMonth.value)
+    if (!result.success) throw new Error(result.error)
+    downloadJSON(result.data, `schedule_${backupMonth.value}.json`)
+  } catch (e) {
+    alert('備份失敗：' + e.message)
+  } finally {
+    backupLoading.value = ''
+  }
+}
+
+async function backupSettings() {
+  backupLoading.value = 'settings'
+  try {
+    const [settingsRes, shiftTypesRes, usersRes] = await Promise.all([
+      api.getSettings(),
+      api.getShiftTypes(),
+      api.getUsers()
+    ])
+    const data = {
+      exportedAt: new Date().toISOString(),
+      settings: settingsRes.data,
+      shiftTypes: shiftTypesRes.data,
+      users: usersRes.data
+    }
+    downloadJSON(data, `settings_${new Date().toISOString().slice(0, 10)}.json`)
+  } catch (e) {
+    alert('備份失敗：' + e.message)
+  } finally {
+    backupLoading.value = ''
+  }
+}
+
+// ── Historical Import ────────────────────────────────────────
+const importData = ref(null)
+const importCodes = ref({})
+const importMonths = ref({})
+const importLoading = ref(false)
+const importProgress = ref(0)
+const importTotal = ref(0)
+const importErrors = ref([])
+const importDone = ref(false)
+const importDoneCount = ref(0)
+
+function importGetUser(code) {
+  return settingsStore.users.find(u => u.code === code) || null
+}
+
+const importSortedMonths = computed(() =>
+  importData.value ? Object.keys(importData.value.months).sort() : []
+)
+
+function importMonthShiftCount(yyyyMM) {
+  const m = importData.value?.months?.[yyyyMM]
+  if (!m) return 0
+  return Object.values(m).reduce((sum, shifts) => sum + Object.keys(shifts).length, 0)
+}
+
+function importSelectAll(val) {
+  Object.keys(importMonths.value).forEach(m => { importMonths.value[m] = val })
+}
+
+function resetImport() {
+  importData.value = null
+  importCodes.value = {}
+  importMonths.value = {}
+  importErrors.value = []
+  importDone.value = false
+  importDoneCount.value = 0
+}
+
+async function handleImportFile(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  try {
+    const text = await file.text()
+    const data = JSON.parse(text)
+    if (!data.months || !data.codes) { alert('JSON 格式不正確，請使用 parse_schedule_excel.py 產生的檔案'); return }
+    importData.value = data
+    const codeMap = {}
+    data.codes.forEach(c => { codeMap[c] = true })
+    importCodes.value = codeMap
+    const monthMap = {}
+    Object.keys(data.months).forEach(m => { monthMap[m] = true })
+    importMonths.value = monthMap
+    if (settingsStore.users.length === 0) await settingsStore.fetchUsers()
+  } catch {
+    alert('無法解析 JSON 檔案')
+  }
+  e.target.value = ''
+}
+
+async function startImport() {
+  importLoading.value = true
+  importErrors.value = []
+  importDone.value = false
+  importDoneCount.value = 0
+
+  try {
+    // Build code → userId map (create new users for unmatched codes)
+    const codeToUserId = {}
+    for (const code of importData.value.codes) {
+      if (!importCodes.value[code]) continue
+      const existing = importGetUser(code)
+      if (existing) {
+        codeToUserId[code] = existing.userId
+      } else {
+        // Create as inactive historical user
+        const r = await api.addUser({
+          name: `歷史人員_${code}`,
+          email: `import_${code.toLowerCase()}@placeholder.local`,
+          role: 'member',
+          isActive: false,
+          code
+        })
+        if (r.success) {
+          codeToUserId[code] = r.data.userId
+        } else {
+          // May already exist; refresh and retry
+          await settingsStore.fetchUsers()
+          const retry = importGetUser(code)
+          if (retry) codeToUserId[code] = retry.userId
+        }
+      }
+    }
+    await settingsStore.fetchUsers()
+
+    // Import each selected month
+    const selected = importSortedMonths.value.filter(m => importMonths.value[m])
+    importTotal.value = selected.length
+    importProgress.value = 0
+
+    for (const yyyyMM of selected) {
+      const monthData = importData.value.months[yyyyMM]
+      const shifts = []
+      for (const [code, dayShifts] of Object.entries(monthData)) {
+        if (!importCodes.value[code]) continue
+        const userId = codeToUserId[code]
+        if (!userId) continue
+        for (const [dayKey, shift] of Object.entries(dayShifts)) {
+          const day = parseInt(dayKey.replace('day_', ''))
+          if (shift) shifts.push({ userId, day, shift })
+        }
+      }
+      if (shifts.length > 0) {
+        try {
+          const r = await api.batchSaveShifts({ yyyyMM, shifts, updatedPools: null })
+          if (!r.success) importErrors.value.push(`${yyyyMM}: ${r.error}`)
+          else importDoneCount.value++
+        } catch (e) {
+          importErrors.value.push(`${yyyyMM}: ${e.message}`)
+        }
+      } else {
+        importDoneCount.value++ // empty month counts as done
+      }
+      importProgress.value++
+    }
+    importDone.value = true
+  } catch (e) {
+    importErrors.value.push('系統錯誤：' + e.message)
+  } finally {
+    importLoading.value = false
   }
 }
 

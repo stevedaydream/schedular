@@ -89,8 +89,11 @@
             :key="`${user.userId}-${dayInfo.day}`"
             class="border border-gray-200 p-0"
             :style="dayCellBg(dayInfo)"
+            :data-uid="user.userId"
+            :data-d="dayInfo.day"
             @mousedown="onCellMousedown(user.userId, dayInfo.day, $event)"
             @mouseenter="onCellMouseenter(user.userId, dayInfo.day)"
+            @touchstart="onCellTouchStart(user.userId, dayInfo.day, $event)"
           >
             <ShiftCell
               :shift="getShift(user.userId, dayInfo.day)"
@@ -501,6 +504,81 @@ function cancelDrag() {
   showDragPicker.value = false
 }
 
-onMounted(() => document.addEventListener('mouseup', onDocumentMouseup))
-onUnmounted(() => document.removeEventListener('mouseup', onDocumentMouseup))
+// ── Touch drag-to-select ─────────────────────────────────────
+let touchTimer = null
+let touchDragActive = false
+
+function onCellTouchStart(userId, day, event) {
+  if (!props.isEditable) return
+  clearTimeout(touchTimer)
+  touchDragActive = false
+  touchTimer = setTimeout(() => {
+    touchDragActive = true
+    dragStarted = true
+    isDragging.value = false
+    dragCells.value = [{ userId, day }]
+    if (navigator.vibrate) navigator.vibrate(30)
+  }, 400)
+}
+
+function onDocumentTouchMove(event) {
+  if (!touchDragActive) {
+    // Clear timer if finger moved before long press fires
+    if (touchTimer) { clearTimeout(touchTimer); touchTimer = null }
+    return
+  }
+  event.preventDefault()
+  const touch = event.touches[0]
+  const el = document.elementFromPoint(touch.clientX, touch.clientY)
+  if (!el) return
+  const td = el.closest('[data-uid]')
+  if (!td) return
+  const uid = td.dataset.uid
+  const day = parseInt(td.dataset.d)
+  if (!uid || !day) return
+  if (!dragCells.value.some(c => c.userId === uid && c.day === day)) {
+    isDragging.value = true
+    dragCells.value.push({ userId: uid, day })
+  }
+}
+
+function onDocumentTouchEnd(event) {
+  clearTimeout(touchTimer)
+  touchTimer = null
+  if (!touchDragActive) return
+  touchDragActive = false
+  if (!dragStarted) return
+  dragStarted = false
+  if (isDragging.value && dragCells.value.length > 1) {
+    const touch = event.changedTouches[0]
+    showDragPicker.value = true
+    dragPickerPos.value = { x: touch.clientX, y: touch.clientY }
+    setTimeout(() => { isDragging.value = false }, 50)
+  } else {
+    isDragging.value = false
+    dragCells.value = []
+  }
+}
+
+function onDocumentTouchCancel() {
+  clearTimeout(touchTimer)
+  touchTimer = null
+  touchDragActive = false
+  dragStarted = false
+  isDragging.value = false
+  dragCells.value = []
+}
+
+onMounted(() => {
+  document.addEventListener('mouseup', onDocumentMouseup)
+  document.addEventListener('touchmove', onDocumentTouchMove, { passive: false })
+  document.addEventListener('touchend', onDocumentTouchEnd)
+  document.addEventListener('touchcancel', onDocumentTouchCancel)
+})
+onUnmounted(() => {
+  document.removeEventListener('mouseup', onDocumentMouseup)
+  document.removeEventListener('touchmove', onDocumentTouchMove)
+  document.removeEventListener('touchend', onDocumentTouchEnd)
+  document.removeEventListener('touchcancel', onDocumentTouchCancel)
+})
 </script>

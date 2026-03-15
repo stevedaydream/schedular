@@ -54,24 +54,30 @@
       :title="requestShift === shift ? '預約已確認' : isDisputedRequest ? '爭議預約：' + requestShift : '預約：' + requestShift"
     >{{ requestShift === shift ? '✓' : requestShift }}</span>
 
-    <!-- Hover picker -->
+    <!-- Radial picker -->
     <div
       v-if="hovered && isEditable"
-      class="absolute z-30 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-0.5 bg-white border border-gray-300 rounded shadow-lg px-1 py-0.5"
+      class="absolute z-30 top-1/2 left-1/2"
+      style="width: 0; height: 0;"
+      @click.stop
     >
+      <!-- Cancel at center -->
       <button
-        v-for="option in options"
-        :key="option.value"
+        class="absolute w-7 h-7 rounded-full bg-gray-200 text-gray-600 text-xs font-medium hover:bg-gray-300 z-10 flex items-center justify-center shadow"
+        style="transform: translate(-50%, -50%)"
+        @click.stop="select(null)"
+      >✕</button>
+      <!-- Shift options radially -->
+      <button
+        v-for="opt in radialOptions"
+        :key="opt.value"
         :class="[
-          'text-xs px-1.5 py-0.5 rounded font-medium transition-colors',
-          shift === option.value
-            ? option.activeClass
-            : 'text-gray-500 hover:' + option.hoverClass
+          'absolute w-8 h-8 rounded-full text-xs font-medium flex items-center justify-center transition-colors shadow border',
+          shift === opt.value ? opt.activeClass : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
         ]"
-        @click.stop="select(option.value)"
-      >
-        {{ option.label }}
-      </button>
+        :style="opt.style"
+        @click.stop="select(opt.value)"
+      >{{ opt.label }}</button>
     </div>
   </div>
 </template>
@@ -79,6 +85,8 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useShiftTypesStore } from '../../stores/shiftTypes.js'
+
+const RADIAL_RADIUS = 50
 
 const props = defineProps({
   shift: { type: String, default: null },
@@ -99,15 +107,20 @@ const emit = defineEmits(['update'])
 const shiftTypesStore = useShiftTypesStore()
 const hovered = ref(false)
 
-const options = computed(() => [
-  ...shiftTypesStore.activeTypes.map(t => ({
+const radialOptions = computed(() => {
+  const opts = shiftTypesStore.activeTypes.map(t => ({
     value: t.id,
     label: t.label,
-    activeClass: shiftTypesStore.getActiveClass(t.id),
-    hoverClass: shiftTypesStore.getHoverClass(t.id)
-  })),
-  { value: null, label: '✕', activeClass: 'bg-gray-200 text-gray-600', hoverClass: 'bg-gray-100' }
-])
+    activeClass: shiftTypesStore.getActiveClass(t.id)
+  }))
+  const n = opts.length
+  return opts.map((opt, i) => {
+    const angle = (2 * Math.PI / n) * i - Math.PI / 2
+    const x = Math.round(RADIAL_RADIUS * Math.cos(angle))
+    const y = Math.round(RADIAL_RADIUS * Math.sin(angle))
+    return { ...opt, style: `transform: translate(calc(${x}px - 50%), calc(${y}px - 50%));` }
+  })
+})
 
 const displayValue = computed(() => {
   if (!props.shift) return ''

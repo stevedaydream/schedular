@@ -86,6 +86,7 @@ export const api = {
   getUsers: () => gasGet('getUsers'),
   getRotationState: () => gasGet('getRotationState'),
   getShiftBalance: () => gasGet('getShiftBalance'),
+  getRecentRotationRecord: (yyyyMM) => gasGet('getRecentRotationRecord', { yyyyMM }),
 
   // POST endpoints
   login: (data) => gasPost('login', data),

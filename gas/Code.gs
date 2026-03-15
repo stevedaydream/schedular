@@ -18,8 +18,9 @@ function doGet(e) {
       case 'getSettings':    return respond(Settings_.getSettings());
       case 'getShiftTypes':  return respond(Settings_.getShiftTypes());
       case 'getUsers':       return respond(Auth.getUsers());
-      case 'getRotationState': return respond(Rotation.getRotationState());
-      case 'getShiftBalance':  return respond(Rotation.getShiftBalance());
+      case 'getRotationState':        return respond(Rotation.getRotationState());
+      case 'getShiftBalance':         return respond(Rotation.getShiftBalance());
+      case 'getRecentRotationRecord': return respond(Schedule.getRecentRotationRecord(params));
       default:               return respond({ success: false, error: 'Unknown action: ' + action });
     }
   } catch (err) {

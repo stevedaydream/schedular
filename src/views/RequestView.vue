@@ -6,6 +6,7 @@
       <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
         <MonthSwitcher
           :currentMonth="requestStore.currentMonth"
+          :minMonth="minRequestMonth"
           @change="onMonthChange"
         />
         <div class="text-sm text-gray-500">
@@ -112,7 +113,7 @@ import { useSettingsStore } from '../stores/settings.js'
 import { useAuthStore } from '../stores/auth.js'
 import { useHoliday } from '../composables/useHoliday.js'
 import { useRotationProjection } from '../composables/useRotationProjection.js'
-import { getMonthDays, getDayType, DAY_NAMES } from '../utils/dateHelper.js'
+import { getMonthDays, getDayType, DAY_NAMES, addMonths, getCurrentYYYYMM } from '../utils/dateHelper.js'
 import NavBar from '../components/common/NavBar.vue'
 import MonthSwitcher from '../components/common/MonthSwitcher.vue'
 import ShiftCell from '../components/schedule/ShiftCell.vue'
@@ -126,6 +127,9 @@ const { holidays, fetchHolidays } = useHoliday()
 const { projectMonth } = useRotationProjection()
 
 const overBookModal = ref({ show: false, day: null, shift: null })
+
+// Earliest browsable month: current month (no past month access)
+const minRequestMonth = getCurrentYYYYMM()
 
 // Projected rotation map: { [userId]: { day_X: 'D'|'N' } }
 const projectedShifts = ref({})
@@ -189,6 +193,7 @@ function hasWeekendSchedule() {
 }
 
 async function onMonthChange(yyyyMM) {
+  if (yyyyMM < minRequestMonth) return
   await Promise.all([
     requestStore.fetchRequests(yyyyMM),
     scheduleStore.fetchSchedule(yyyyMM)
@@ -208,7 +213,9 @@ async function handleUpdateRequest(userId, day, shift) {
 }
 
 onMounted(async () => {
-  const yyyyMM = requestStore.currentMonth
+  // Default to next month for request submission
+  const yyyyMM = addMonths(getCurrentYYYYMM(), 1)
+  requestStore.currentMonth = yyyyMM
   await Promise.all([
     settingsStore.fetchSettings(),
     settingsStore.fetchUsers(),

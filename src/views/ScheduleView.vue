@@ -248,6 +248,113 @@
         </div>
       </div>
 
+      <!-- 輪序管理面板（排班者 / 超管） -->
+      <div
+        v-if="canManageRotation && !scheduleStore.isLocked"
+        class="mb-4 bg-white border border-gray-200 rounded-lg print:hidden"
+      >
+        <!-- Header row -->
+        <div class="px-4 py-2.5 border-b border-gray-100 flex flex-wrap items-center gap-2 justify-between">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">配額輪序管理</span>
+            <span v-if="offLocked" class="text-xs text-amber-600 flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">🔒 已鎖定</span>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button
+              @click="svCalcOff"
+              :disabled="svOffLoading"
+              :class="svResetApplied ? 'bg-orange-500 hover:bg-orange-600 text-white text-xs px-2.5 py-1 rounded font-medium transition-colors' : 'btn-primary text-xs px-2.5 py-1'"
+            >{{ svOffLoading ? '計算中...' : svResetApplied ? '重新計算並推進輪序' : '計算配額' }}</button>
+            <template v-if="svOffPreview.length > 0">
+              <button
+                v-if="!offLocked"
+                @click="svShowApplyConfirm = true"
+                :disabled="svOffApplying"
+                class="btn-secondary text-xs px-2.5 py-1"
+              >{{ svOffApplying ? '帶入中...' : '帶入配額' }}</button>
+              <button
+                v-if="!offLocked"
+                @click="svShowCommitConfirm = true"
+                :disabled="svOffCommitting"
+                class="btn-secondary text-xs px-2.5 py-1"
+              >{{ svOffCommitting ? '結算中...' : '結算' }}</button>
+            </template>
+          </div>
+        </div>
+
+        <!-- Interaction hint + unlock toggle -->
+        <div class="px-4 py-2 flex items-center justify-between gap-2 border-b border-gray-100">
+          <span class="text-xs text-gray-400">
+            {{ svAnyOrderLocked ? '輪序已鎖定（防誤觸）' : '點擊代號設為起點，或拖曳旋轉順序' }}
+          </span>
+          <button
+            v-if="svAnyOrderLocked"
+            @click="svUnlockAll"
+            class="text-xs px-2 py-0.5 rounded border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors shrink-0"
+          >解鎖修改</button>
+        </div>
+
+        <!-- Rotation order display: 4 rows, one per shift type -->
+        <div class="px-4 py-3 space-y-1.5">
+          <div v-for="st in ['D','N','Off','W6Off']" :key="st">
+            <!-- Chip row -->
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-gray-400 w-10 shrink-0">{{ st }}</span>
+              <div
+                class="flex gap-1 overflow-hidden select-none"
+                :class="svOrderLocked[st]
+                  ? 'opacity-50'
+                  : svDraggingShift === st ? 'cursor-grabbing' : 'cursor-grab'"
+                @mousedown="!svOrderLocked[st] && svDragStart(st, $event)"
+                @touchstart.prevent="!svOrderLocked[st] && svDragStart(st, $event)"
+              >
+                <div
+                  v-for="uid in svGetDisplayOrder(st)"
+                  :key="uid"
+                  :title="svOrderLocked[st] ? getUserName(uid) : getUserName(uid) + '（點擊設為起點）'"
+                  :class="[
+                    'w-7 h-7 rounded text-xs font-mono font-bold flex items-center justify-center border select-none transition-colors',
+                    svPendingReset?.st === st && svPendingReset?.newOrder[0] === uid
+                      ? 'ring-2 ring-offset-1 ring-blue-400'
+                      : '',
+                    svIsStart(st, uid) ? 'bg-blue-500 text-white border-blue-600'
+                    : svIsEnd(st, uid) ? 'bg-orange-400 text-white border-orange-500'
+                    : 'bg-gray-100 text-gray-600 border-gray-200'
+                  ]"
+                  @click.stop="!svOrderLocked[st] && svChipClick(st, uid)"
+                >{{ getUserCode(uid) || '?' }}</div>
+              </div>
+              <span v-if="svGetExtras(st) > 0" class="text-xs text-gray-400 shrink-0">+{{ svGetExtras(st) }}</span>
+              <span v-if="svOrderLocked[st]" class="text-amber-500 shrink-0 text-xs">🔒</span>
+            </div>
+            <!-- Inline confirm banner -->
+            <div
+              v-if="svPendingReset?.st === st"
+              class="mt-1 ml-12 flex items-center gap-2 py-1 px-2 bg-blue-50 rounded border border-blue-200"
+            >
+              <span class="text-xs text-gray-700">
+                以 <span class="font-mono font-bold text-blue-600">{{ getUserCode(svPendingReset.newOrder[0]) }}</span>
+                為「{{ st }}」輪序起點？
+              </span>
+              <button @click="svDoConfirmReset" class="text-xs px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors shrink-0">確認</button>
+              <button @click="svCancelPendingReset" class="text-xs px-2 py-0.5 border border-gray-300 rounded hover:bg-gray-100 transition-colors shrink-0">取消</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pending action hint -->
+        <div
+          v-if="svOffPreview.length > 0 && !offLocked"
+          class="mx-4 mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700 flex items-center gap-1.5"
+        >
+          <span>⚠</span>
+          <span>配額已試算，尚未<strong>帶入班表</strong>或<strong>結算</strong></span>
+        </div>
+
+        <div v-if="svOffError" class="px-4 pb-3 text-xs text-red-600">{{ svOffError }}</div>
+        <div v-if="svOffApplyOk" class="px-4 pb-3 text-xs text-green-600">✓ 配額已套用到班表</div>
+      </div>
+
       <!-- 輪序結果備查 -->
       <div
         v-if="scheduleStore.meta?.rotationRecord"
@@ -500,6 +607,37 @@
         </div>
       </div>
     </div>
+
+    <!-- Rotation: Apply quota confirm -->
+    <div v-if="svShowApplyConfirm" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+        <h3 class="text-lg font-semibold mb-2">帶入配額到班表</h3>
+        <p class="text-sm text-gray-600 mb-4">
+          將計算出的 D / N / Off / W6Off 配額套用到 {{ scheduleStore.currentMonth.slice(0,4) }} 年 {{ scheduleStore.currentMonth.slice(4) }} 月。
+          此操作不更新累計餘數，可重複執行。
+        </p>
+        <div class="flex gap-2 justify-end">
+          <button @click="svShowApplyConfirm = false" class="btn-secondary">取消</button>
+          <button @click="svApplyQuota" class="btn-primary">確認帶入</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rotation: Commit confirm -->
+    <div v-if="svShowCommitConfirm" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+        <h3 class="text-lg font-semibold mb-2">結算本月輪序</h3>
+        <p class="text-sm text-gray-600 mb-1">
+          將 {{ scheduleStore.currentMonth.slice(0,4) }} 年 {{ scheduleStore.currentMonth.slice(4) }} 月的分配結果寫入累計餘數，作為下次輪序的基準。
+        </p>
+        <p class="text-xs text-amber-600 mb-4">⚠ 結算後輪序將鎖定，如需重算需先重設起點。</p>
+        <div class="flex gap-2 justify-end">
+          <button @click="svShowCommitConfirm = false" class="btn-secondary">取消</button>
+          <button @click="svCommit" class="btn-primary">確認結算</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -514,7 +652,7 @@ import { useAutoSchedule } from '../composables/useAutoSchedule.js'
 import { useShiftTypesStore } from '../stores/shiftTypes.js'
 import { useHoliday } from '../composables/useHoliday.js'
 import { calcScheduleHealth, getRequiredCount } from '../utils/shiftCalc.js'
-import { getMonthDays, getDayType, DAY_NAMES, addMonths } from '../utils/dateHelper.js'
+import { getMonthDays, getDayType, DAY_NAMES, addMonths, getCurrentYYYYMM } from '../utils/dateHelper.js'
 import NavBar from '../components/common/NavBar.vue'
 import MonthSwitcher from '../components/common/MonthSwitcher.vue'
 import ScheduleGrid from '../components/schedule/ScheduleGrid.vue'
@@ -759,7 +897,8 @@ async function handleResetWeekends() {
 }
 
 onMounted(async () => {
-  const yyyyMM = scheduleStore.currentMonth
+  // Default to next month so scheduler starts on the month they're about to arrange
+  const yyyyMM = addMonths(getCurrentYYYYMM(), 1)
   await Promise.all([
     settingsStore.fetchSettings(),
     settingsStore.fetchUsers(),
@@ -770,9 +909,21 @@ onMounted(async () => {
   const year = parseInt(yyyyMM.slice(0, 4))
   await fetchHolidays(year)
   await autoFillWeekends()
+  if (canManageRotation.value && !scheduleStore.isLocked) {
+    await svInitOrderFromRecord(yyyyMM) // rotation order (chip display) — must finish before svCalcOff
+    svCalcOff()                         // extras count + quota preview — fire-and-forget
+  }
 })
 
 async function onMonthChange(yyyyMM) {
+  // Reset rotation panel state when switching months
+  svOffPreview.value = []
+  svResetOrders.value = { D: [], N: [], Off: [], W6Off: [] }
+  svResetModified.value = { D: false, N: false, Off: false, W6Off: false }
+  svOrderLocked.value = { D: false, N: false, Off: false, W6Off: false }
+  svPendingReset.value = null
+  offLocked.value = false
+
   await Promise.all([
     scheduleStore.fetchSchedule(yyyyMM),
     requestStore.fetchRequests(yyyyMM)
@@ -780,6 +931,10 @@ async function onMonthChange(yyyyMM) {
   const year = parseInt(yyyyMM.slice(0, 4))
   await fetchHolidays(year)
   await autoFillWeekends()
+  if (canManageRotation.value && !scheduleStore.isLocked) {
+    await svInitOrderFromRecord(yyyyMM) // rotation order (chip display) — must finish before svCalcOff
+    svCalcOff()                         // extras count + quota preview — fire-and-forget
+  }
 }
 
 async function handleUpdateShift({ userId, day, shift }) {
@@ -862,6 +1017,373 @@ async function handleTransfer() {
     await settingsStore.fetchUsers()
   }
 }
+
+// ── 輪序管理（排班者 / 超管）────────────────────────────────
+const canManageRotation = computed(() => {
+  const role = authStore.user?.role
+  return role === 'superadmin' || role === 'scheduler'
+})
+
+function getUserCode(userId) {
+  return settingsStore.users.find(u => u.userId === userId)?.code || ''
+}
+
+const svActiveUsers = computed(() =>
+  [...settingsStore.users]
+    .filter(u => u.isActive !== false && u.isActive !== 'false')
+    .sort((a, b) => (parseInt(a.sortOrder) || 0) - (parseInt(b.sortOrder) || 0))
+)
+
+// State
+const svOffLoading = ref(false)
+const svOffApplying = ref(false)
+const svOffCommitting = ref(false)
+const svOffError = ref(null)
+const svOffApplyOk = ref(false)
+const svOffPreview = ref([])
+const svMonthTotals = ref({ D: 0, N: 0, Off: 0, W6Off: 0 })
+const offLocked = ref(false)
+const svResetApplied = ref(false)
+const svResetOrders = ref({ D: [], N: [], Off: [], W6Off: [] })
+const svResetModified = ref({ D: false, N: false, Off: false, W6Off: false })
+const svShowApplyConfirm = ref(false)
+const svShowCommitConfirm = ref(false)
+
+// Drag-to-rotate state
+const svOrderLocked = ref({ D: false, N: false, Off: false, W6Off: false })
+const svPendingReset = ref(null)   // { st, newOrder: [...userIds] }
+const svDraggingShift = ref(null)  // shift type currently being dragged
+const svDragRotation = ref(0)      // rotation offset in chip positions
+let svIsDragging = false           // whether drag threshold was exceeded
+
+const svAnyOrderLocked = computed(() => Object.values(svOrderLocked.value).some(v => v))
+
+function svComputeTotals(yyyyMM, activeCount) {
+  if (!yyyyMM || activeCount === 0) return { D: 0, N: 0, Off: 0, W6Off: 0 }
+  const s = settingsStore.settings
+  let d = 0, n = 0, off = 0, w6off = 0
+  getMonthDays(yyyyMM).forEach(({ dateStr, dayOfWeek }) => {
+    const dayType = getDayType(dateStr, holidays.value || [])
+    d += shiftTypesStore.getRequiredCount('D', dayType) ?? getRequiredCount('D', dayType, s) ?? 0
+    n += shiftTypesStore.getRequiredCount('N', dayType) ?? getRequiredCount('N', dayType, s) ?? 0
+    const totalRequired = shiftTypesStore.activeTypes
+      .filter(t => t.id !== 'Off' && t.id !== 'W6Off' && shiftTypesStore.isApplicable(t.id, dayType))
+      .reduce((sum, t) => sum + (shiftTypesStore.getRequiredCount(t.id, dayType) ?? getRequiredCount(t.id, dayType, s) ?? 0), 0)
+    const remainder = Math.max(0, activeCount - totalRequired)
+    off += remainder
+    if (dayOfWeek === 6) w6off += remainder
+  })
+  return { D: d, N: n, Off: off, W6Off: w6off }
+}
+
+async function svCalcOff() {
+  svOffError.value = null
+  svOffApplyOk.value = false
+  svOffPreview.value = []
+  svResetApplied.value = false
+  svOffLoading.value = true
+  try {
+    if (settingsStore.users.length === 0) await settingsStore.fetchUsers()
+    if (settingsStore.settings.wdD == null) await settingsStore.fetchSettings()
+    if (shiftTypesStore.shiftTypes.length === 0) await shiftTypesStore.fetchShiftTypes()
+    const year = parseInt(scheduleStore.currentMonth.slice(0, 4))
+    await fetchHolidays(year)
+
+    const userIds = svActiveUsers.value.map(u => u.userId)
+    const yyyyMM = scheduleStore.currentMonth
+    const totals = svComputeTotals(yyyyMM, userIds.length)
+    svMonthTotals.value = totals
+
+    const result = await api.applyMonthlyShiftQuota({ yyyyMM, totals, userIds })
+    if (!result.success) { svOffError.value = result.error; return }
+    svOffPreview.value = result.data.preview
+    offLocked.value = result.data.locked === true
+    // Fallback: fill any shift type whose rotation order wasn't found by svInitOrderFromRecord
+    // (e.g. old records missing Off/W6Off) using balance-before ascending sort
+    ;['D', 'N', 'Off', 'W6Off'].forEach(st => {
+      if (svResetOrders.value[st].length > 0) return
+      const sorted = [...result.data.preview]
+        .sort((a, b) => (a[st]?.balanceBefore ?? 0) - (b[st]?.balanceBefore ?? 0))
+        .map(r => r.userId)
+      if (sorted.length > 0) {
+        svResetOrders.value[st] = sorted.map(uid => ({ userId: uid }))
+      }
+    })
+  } catch (e) {
+    svOffError.value = e.message || '計算失敗'
+  } finally {
+    svOffLoading.value = false
+  }
+}
+
+async function svApplyQuota() {
+  svShowApplyConfirm.value = false
+  svOffApplying.value = true
+  svOffError.value = null
+  try {
+    const userIds = svActiveUsers.value.map(u => u.userId)
+    const yyyyMM = scheduleStore.currentMonth
+    const result = await api.applyMonthlyShiftQuota({ yyyyMM, totals: svMonthTotals.value, userIds })
+    if (!result.success) { svOffError.value = result.error; return }
+    svOffApplyOk.value = true
+    // Refresh schedule meta so quota columns update
+    await scheduleStore.fetchSchedule(yyyyMM)
+  } catch (e) {
+    svOffError.value = e.message || '套用失敗'
+  } finally {
+    svOffApplying.value = false
+  }
+}
+
+async function svCommit() {
+  svShowCommitConfirm.value = false
+  if (svOffPreview.value.length === 0) { svOffError.value = '請先計算分配'; return }
+  svOffCommitting.value = true
+  svOffError.value = null
+  try {
+    const n = svOffPreview.value.length
+    const yyyyMM = scheduleStore.currentMonth
+    const expected = {
+      D: svMonthTotals.value.D / n,
+      N: svMonthTotals.value.N / n,
+      Off: svMonthTotals.value.Off / n,
+      W6Off: svMonthTotals.value.W6Off / n
+    }
+    const assignments = {}
+    svOffPreview.value.forEach(r => {
+      assignments[r.userId] = { D: r.D.quota, N: r.N.quota, Off: r.Off.quota, W6Off: r.W6Off?.quota ?? 0 }
+    })
+    const rotationRecord = { yyyyMM }
+    ;['D', 'N', 'Off', 'W6Off'].forEach(st => {
+      const sorted = [...svOffPreview.value].sort((a, b) => (a[st]?.balanceBefore ?? 0) - (b[st]?.balanceBefore ?? 0))
+      const extras = sorted[0]?.[st]?.extras ?? 0
+      rotationRecord[st] = {
+        order: sorted.map(r => r.userId),
+        startUserId: sorted[0]?.userId ?? null,
+        endUserId: extras > 0 ? (sorted[extras - 1]?.userId ?? null) : null,
+        extras
+      }
+    })
+    const result = await api.commitShiftBalance({ assignments, expected, yyyyMM, rotationRecord })
+    if (!result.success) { svOffError.value = result.error; return }
+    Object.keys(svResetModified.value).forEach(k => { svResetModified.value[k] = false })
+    await scheduleStore.fetchSchedule(yyyyMM)
+    await svCalcOff()
+  } catch (e) {
+    svOffError.value = e.message || '結算失敗'
+  } finally {
+    svOffCommitting.value = false
+  }
+}
+
+// ── Drag-to-rotate helpers ─────────────────────────────────────────────────
+
+const CHIP_WIDTH = 32 // px: w-7 (28) + gap-1 (4)
+
+function svGetCurrentOrder(st) {
+  if (svResetOrders.value[st].length > 0) return svResetOrders.value[st].map(u => u.userId)
+  return svActiveUsers.value.map(u => u.userId)
+}
+
+function svDragStart(st, event) {
+  svIsDragging = false
+  svPendingReset.value = null
+  svDraggingShift.value = st
+  svDragRotation.value = 0
+
+  const isTouch = event.type === 'touchstart'
+  const getX = (e) => isTouch
+    ? (e.touches[0] ?? e.changedTouches[0])?.clientX ?? 0
+    : e.clientX
+  const startX = getX(event)
+
+  const onMove = (e) => {
+    const deltaX = getX(e) - startX
+    svIsDragging = Math.abs(deltaX) > 8
+    if (svIsDragging) {
+      // Drag left → rotate forward (positive rotation)
+      svDragRotation.value = -Math.round(deltaX / CHIP_WIDTH)
+      if (isTouch) e.preventDefault()
+    }
+  }
+
+  const onEnd = () => {
+    document.removeEventListener(isTouch ? 'touchmove' : 'mousemove', onMove)
+    document.removeEventListener(isTouch ? 'touchend' : 'mouseup', onEnd)
+
+    const finalRot = svDragRotation.value
+    const wasDrag = svIsDragging
+    svDraggingShift.value = null
+    svDragRotation.value = 0
+
+    if (!wasDrag || finalRot === 0) return
+
+    const base = svGetCurrentOrder(st)
+    const n = base.length
+    if (n === 0) return
+    const rot = ((finalRot % n) + n) % n
+    if (rot === 0) return
+    svPendingReset.value = { st, newOrder: [...base.slice(rot), ...base.slice(0, rot)] }
+  }
+
+  document.addEventListener(isTouch ? 'touchmove' : 'mousemove', onMove, { passive: false })
+  document.addEventListener(isTouch ? 'touchend' : 'mouseup', onEnd)
+}
+
+function svChipClick(st, uid) {
+  if (svIsDragging) return
+  const base = svGetCurrentOrder(st)
+  const idx = base.indexOf(uid)
+  if (idx <= 0) return // already at start position
+  svPendingReset.value = { st, newOrder: [...base.slice(idx), ...base.slice(0, idx)] }
+}
+
+async function svDoConfirmReset() {
+  if (!svPendingReset.value) return
+  const { st, newOrder } = svPendingReset.value
+  svPendingReset.value = null
+  svOffError.value = null
+  try {
+    const n = newOrder.length
+    const resetBalances = {}
+    newOrder.forEach((uid, i) => {
+      resetBalances[uid] = { [st]: parseFloat((-(n - 1 - i) / n).toFixed(4)) }
+    })
+    const wasLocked = offLocked.value
+    const yyyyMM = wasLocked ? scheduleStore.currentMonth : undefined
+    const result = await api.commitShiftBalance({ resetBalances, yyyyMM })
+    if (!result.success) { svOffError.value = result.error; return }
+    svResetOrders.value[st] = newOrder.map(uid => ({ userId: uid }))
+    svResetModified.value[st] = true
+    svOrderLocked.value[st] = true
+    if (wasLocked) {
+      offLocked.value = false
+      svOffPreview.value = []
+      svResetApplied.value = true
+    } else if (svOffPreview.value.length > 0) {
+      await svCalcOff()
+    }
+  } catch (e) {
+    svOffError.value = e.message || '重設失敗'
+  }
+}
+
+function svCancelPendingReset() {
+  svPendingReset.value = null
+}
+
+function svUnlockAll() {
+  Object.keys(svOrderLocked.value).forEach(k => { svOrderLocked.value[k] = false })
+}
+
+// Initialise svResetOrders from the most recent saved rotationRecord.
+// 1. Current month has a rotationRecord → use it directly.
+// 2. No record for current month → search backwards, advance order by extras, project to current month.
+// 3. No record found at all → leave empty (falls back to user list in svGetDisplayOrder).
+async function svInitOrderFromRecord(yyyyMM) {
+  const SHIFT_TYPES = ['D', 'N', 'Off', 'W6Off']
+
+  function applyOrders(orders) {
+    SHIFT_TYPES.forEach(st => {
+      if (Array.isArray(orders[st]) && orders[st].length > 0) {
+        svResetOrders.value[st] = orders[st].map(uid => ({ userId: uid }))
+      }
+    })
+  }
+
+  // 1. Current month already has a committed rotationRecord → use it directly
+  const existingRecord = scheduleStore.meta?.rotationRecord
+  if (existingRecord && SHIFT_TYPES.some(st => Array.isArray(existingRecord[st]?.order) && existingRecord[st].order.length > 0)) {
+    const orders = {}
+    SHIFT_TYPES.forEach(st => {
+      if (Array.isArray(existingRecord[st]?.order)) orders[st] = existingRecord[st].order
+    })
+    applyOrders(orders)
+    return
+  }
+
+  // 2. Search backwards for last committed record; GAS advances one step → returns start of foundMonth+1
+  try {
+    const result = await api.getRecentRotationRecord(yyyyMM)
+    if (!result.success || !result.data.record) return
+    // No record found → svResetOrders stays empty → svGetDisplayOrder falls back to user list
+
+    const { foundMonth } = result.data
+    // result.data.record already = starting order for foundMonth+1
+    const orders = {}
+    SHIFT_TYPES.forEach(st => {
+      if (Array.isArray(result.data.record[st]?.order) && result.data.record[st].order.length > 0) {
+        orders[st] = result.data.record[st].order
+      }
+    })
+
+    // 3. Chain through gap months: from foundMonth+1 up to yyyyMM-1
+    // For each uncommitted gap month M, compute extras = totals[st] % n and rotate
+    const n = svActiveUsers.value.length
+    if (n > 0 && foundMonth) {
+      // Ensure holiday data is loaded for any year spanned by the gap
+      const gapYears = new Set()
+      let scanM = addMonths(foundMonth, 1)
+      while (scanM < yyyyMM) {
+        gapYears.add(parseInt(scanM.slice(0, 4)))
+        scanM = addMonths(scanM, 1)
+      }
+      for (const year of gapYears) {
+        await fetchHolidays(year) // cached — no-op if already loaded
+      }
+
+      // Rotate through each gap month to arrive at yyyyMM's starting point
+      scanM = addMonths(foundMonth, 1)
+      while (scanM < yyyyMM) {
+        const totals = svComputeTotals(scanM, n)
+        SHIFT_TYPES.forEach(st => {
+          if (!orders[st] || orders[st].length === 0) return
+          const extras = totals[st] % n
+          if (extras === 0) return
+          orders[st] = [...orders[st].slice(extras), ...orders[st].slice(0, extras)]
+        })
+        scanM = addMonths(scanM, 1)
+      }
+    }
+
+    applyOrders(orders)
+  } catch (e) {
+    // Non-critical — silent fallback to user list
+  }
+}
+
+// Display helpers
+function svGetDisplayOrder(st) {
+  // Active drag: show real-time rotated order
+  if (svDraggingShift.value === st) {
+    const base = svGetCurrentOrder(st)
+    const n = base.length
+    if (n === 0) return []
+    const rot = ((svDragRotation.value % n) + n) % n
+    return rot === 0 ? base : [...base.slice(rot), ...base.slice(0, rot)]
+  }
+  // Pending confirm: show the proposed new order
+  if (svPendingReset.value?.st === st) return svPendingReset.value.newOrder
+  // Always use rotation-order (from svInitOrderFromRecord or user reset).
+  // svCalcOff preview only contributes extras count, not display order.
+  return svGetCurrentOrder(st)
+}
+
+function svGetExtras(st) {
+  if (svOffPreview.value.length > 0) return svOffPreview.value[0]?.[st]?.extras ?? 0
+  const n = svActiveUsers.value.length
+  return n > 0 ? svMonthTotals.value[st] % n : 0
+}
+
+function svIsStart(st, userId) {
+  return svGetDisplayOrder(st)[0] === userId
+}
+
+function svIsEnd(st, userId) {
+  const ex = svGetExtras(st)
+  if (ex <= 0) return false
+  return svGetDisplayOrder(st)[ex - 1] === userId
+}
 </script>
 
 <style>
@@ -869,7 +1391,7 @@ async function handleTransfer() {
 .tooltip-box {
   @apply absolute top-full right-0 mt-2
          bg-gray-900 text-white text-xs rounded-lg px-3 py-2.5
-         opacity-0 group-hover:opacity-100
+         opacity-0 group-hover:opacity-100 group-focus-within:opacity-100
          pointer-events-none z-50 shadow-xl
          transition-opacity duration-150;
 }
@@ -877,6 +1399,15 @@ async function handleTransfer() {
   content: '';
   @apply absolute bottom-full right-3
          border-4 border-transparent border-b-gray-900;
+}
+@media (max-width: 640px) {
+  .tooltip-box {
+    @apply bottom-full top-auto mt-0 mb-2 right-0 left-auto;
+    max-width: calc(100vw - 2rem);
+  }
+  .tooltip-box::after {
+    @apply top-full bottom-auto border-t-gray-900 border-b-transparent;
+  }
 }
 
 @media print {

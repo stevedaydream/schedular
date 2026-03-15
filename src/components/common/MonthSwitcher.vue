@@ -2,7 +2,13 @@
   <div class="flex items-center gap-3">
     <button
       @click="prev"
-      class="p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+      :disabled="isPrevDisabled"
+      :class="[
+        'p-2 rounded-md transition-colors',
+        isPrevDisabled
+          ? 'text-gray-300 cursor-not-allowed'
+          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+      ]"
       aria-label="上個月"
     >
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -54,13 +60,16 @@
             v-for="m in 12"
             :key="m"
             @click="selectMonth(m)"
+            :disabled="isMonthDisabled(m)"
             :class="[
               'py-1.5 rounded-lg text-sm font-medium transition-colors',
-              isSelected(m)
-                ? 'bg-blue-600 text-white'
-                : isCurrentMonth(m)
-                  ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-300'
-                  : 'text-gray-700 hover:bg-gray-100'
+              isMonthDisabled(m)
+                ? 'text-gray-300 cursor-not-allowed'
+                : isSelected(m)
+                  ? 'bg-blue-600 text-white'
+                  : isCurrentMonth(m)
+                    ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-300'
+                    : 'text-gray-700 hover:bg-gray-100'
             ]"
           >
             {{ m }}月
@@ -99,6 +108,10 @@ const props = defineProps({
   currentMonth: {
     type: String,
     required: true
+  },
+  minMonth: {
+    type: String,
+    default: null
   }
 })
 
@@ -120,6 +133,17 @@ watch(showPicker, (val) => {
   if (val) pickerYear.value = parseInt(props.currentMonth.slice(0, 4))
 })
 
+const isPrevDisabled = computed(() => {
+  if (!props.minMonth) return false
+  return addMonths(props.currentMonth, -1) < props.minMonth
+})
+
+function isMonthDisabled(month) {
+  if (!props.minMonth) return false
+  const mm = String(month).padStart(2, '0')
+  return `${pickerYear.value}${mm}` < props.minMonth
+}
+
 function isSelected(month) {
   const mm = String(month).padStart(2, '0')
   return props.currentMonth === `${pickerYear.value}${mm}`
@@ -132,6 +156,7 @@ function isCurrentMonth(month) {
 }
 
 function selectMonth(month) {
+  if (isMonthDisabled(month)) return
   const mm = String(month).padStart(2, '0')
   emit('change', `${pickerYear.value}${mm}`)
   showPicker.value = false
