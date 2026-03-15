@@ -1421,12 +1421,24 @@ async function svCommit() {
     })
     const rotationRecord = { yyyyMM }
     ;['D', 'N', 'Off', 'W6Off'].forEach(st => {
-      const sorted = [...svOffPreview.value].sort((a, b) => (a[st]?.balanceBefore ?? 0) - (b[st]?.balanceBefore ?? 0))
-      const extras = sorted[0]?.[st]?.extras ?? 0
+      // Use the current UI order if modified, otherwise use balance-sorted order
+      let order = svGetCurrentOrder(st)
+      if (!svResetModified.value[st]) {
+        order = [...svOffPreview.value]
+          .sort((a, b) => (a[st]?.balanceBefore ?? 0) - (b[st]?.balanceBefore ?? 0))
+          .map(r => r.userId)
+      }
+      
+      const extras = svOffPreview.value[0]?.[st]?.extras ?? 0
+      
+      // The next start user is the one at index 'extras' in the current order
+      const nextStartIdx = extras % order.length
+      const nextStartUserId = order[nextStartIdx] ?? null
+      
       rotationRecord[st] = {
-        order: sorted.map(r => r.userId),
-        startUserId: sorted[0]?.userId ?? null,
-        endUserId: extras > 0 ? (sorted[extras - 1]?.userId ?? null) : null,
+        order: order,
+        startUserId: order[0] ?? null,
+        nextStartUserId: nextStartUserId, // Explicitly store who starts next month
         extras
       }
     })
@@ -1580,29 +1592,42 @@ async function svInitOrderFromRecord(yyyyMM) {
   if (existingRecord && SHIFT_TYPES.some(st => Array.isArray(existingRecord[st]?.order) && existingRecord[st].order.length > 0)) {
     const orders = {}
     SHIFT_TYPES.forEach(st => {
-      if (Array.isArray(existingRecord[st]?.order)) orders[st] = reconcileOrder(existingRecord[st].order)
+      const rec = existingRecord[st]
+      if (Array.isArray(rec?.order)) {
+        orders[st] = reconcileOrder(rec.order)
+      }
     })
     applyOrders(orders)
     return
   }
 
-  // 2. Search backwards for last committed record; GAS advances one step → returns start of foundMonth+1
+  // 2. Search backwards for last committed record
   try {
     const result = await api.getRecentRotationRecord(yyyyMM)
     if (!result.success || !result.data.record) return
-    // No record found → svResetOrders stays empty → svGetDisplayOrder falls back to user list
 
-    const { foundMonth } = result.data
-    // result.data.record already = starting order for foundMonth+1
+    const { record: lastRecord, foundMonth } = result.data
     const orders = {}
     SHIFT_TYPES.forEach(st => {
-      if (Array.isArray(result.data.record[st]?.order) && result.data.record[st].order.length > 0) {
-        orders[st] = result.data.record[st].order
+      const rec = lastRecord[st]
+      if (Array.isArray(rec?.order)) {
+        let order = reconcileOrder(rec.order)
+        
+        // Find where the next month should start
+        // nextStartUserId is the explicitly stored starting person for the month AFTER foundMonth
+        const nextStartUid = rec.nextStartUserId || rec.endUserId
+        if (nextStartUid && order.includes(nextStartUid)) {
+          const startIdx = order.indexOf(nextStartUid)
+          if (startIdx !== -1) {
+            // Rotate the order array so nextStartUid is at index 0
+            order = [...order.slice(startIdx), ...order.slice(0, startIdx)]
+          }
+        }
+        orders[st] = order
       }
     })
 
     // 3. Chain through gap months: from foundMonth+1 up to yyyyMM-1
-    // For each uncommitted gap month M, compute extras = totals[st] % n and rotate
     const n = activeIds.length
     if (n > 0 && foundMonth) {
       // Ensure holiday data is loaded for any year spanned by the gap
@@ -1613,7 +1638,7 @@ async function svInitOrderFromRecord(yyyyMM) {
         scanM = addMonths(scanM, 1)
       }
       for (const year of gapYears) {
-        await fetchHolidays(year) // cached — no-op if already loaded
+        await fetchHolidays(year)
       }
 
       // Rotate through each gap month to arrive at yyyyMM's starting point
@@ -1630,13 +1655,9 @@ async function svInitOrderFromRecord(yyyyMM) {
       }
     }
 
-    // Reconcile with current active users after all gap-month rotations
-    SHIFT_TYPES.forEach(st => {
-      if (orders[st]) orders[st] = reconcileOrder(orders[st])
-    })
     applyOrders(orders)
   } catch (e) {
-    // Non-critical — silent fallback to user list
+    // Non-critical
   }
 }
 

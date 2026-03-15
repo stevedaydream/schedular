@@ -23,7 +23,7 @@ export const SHIFT_LABELS = {
 /**
  * 統計一個人員的班別次數
  * @param {Object} scheduleRow - { day_1: 'D', day_2: 'N', ... }
- * @returns {{ D: number, N: number, Off: number, AM: number }}
+ * @returns {Object} { D: number, N: number, Off: number, H3: number, ... }
  */
 export function countShifts(scheduleRow) {
   const counts = { D: 0, N: 0, Off: 0, H3: 0 }
@@ -39,7 +39,7 @@ export function countShifts(scheduleRow) {
 
 /**
  * 檢查某班別在某天是否超預
- * @param {string} shift - 'D'|'N'|'Off'|'AM'
+ * @param {string} shift - 'D'|'N'|'Off'
  * @param {number} day
  * @param {Object} requests - { userId: { day_1: 'D', ... }, ... }
  * @param {Object} settings - { wdD: 1, wdN: 1, ... }
@@ -66,9 +66,11 @@ export function isOverBooked(shift, day, requests, settings, dayType) {
 export function getRequiredCount(shift, dayType, settings) {
   if (!settings) return null
 
+  // Hardcoded for legacy backward compatibility, but priority given to dynamic types
   if (dayType === 'weekday') {
     if (shift === 'D') return parseInt(settings.wdD) || 1
     if (shift === 'N') return parseInt(settings.wdN) || 1
+    // settings.wdAM will still work if shiftId is 'AM' via dynamic stores
   } else if (dayType === 'saturday') {
     if (shift === 'D') return parseInt(settings.satD) || 1
     if (shift === 'N') return parseInt(settings.satN) || 1
@@ -79,15 +81,21 @@ export function getRequiredCount(shift, dayType, settings) {
     if (shift === 'D') return parseInt(settings.holD) || 1
     if (shift === 'N') return parseInt(settings.holN) || 1
   }
+  
+  // Generic fallback: check if settings has [dayTypePrefix][shift]
+  const prefix = dayType === 'weekday' ? 'wd' : (dayType === 'saturday' ? 'sat' : (dayType === 'sunday' ? 'sun' : 'hol'))
+  const key = prefix + shift
+  if (settings[key] !== undefined) return parseInt(settings[key]) || 0
+  
   return null
 }
 
 /**
  * 循環切換班別（用於點擊格子）
- * null → D → N → Off → AM → null
+ * null → D → N → Off → null
  */
 export function cycleShift(current) {
-  const cycle = [null, 'D', 'N', 'Off', 'AM']
+  const cycle = [null, 'D', 'N', 'Off']
   const idx = cycle.indexOf(current)
   return cycle[(idx + 1) % cycle.length]
 }
@@ -96,27 +104,32 @@ export function cycleShift(current) {
  * 計算個人統計並與配額比對
  * @param {Object} shifts - { "1": "D", "2": "N", ... } (day as string key)
  * @param {Object} quota - { D: 4, N: 4, Off: 17, W6Off: 3 }
- * @param {Object} dayInfos - [{ day, dayType }] 用於計算 W6Off
- * @returns {{ actual, quota, diff: { D, N, Off, W6Off }, status: { D, N, Off, W6Off } }}
+ * @param {Object} dayInfos - [{ day, dayType, dayOfWeek }] 用於計算 W6Off
+ * @returns {{ actual, quota, diff, status }}
  */
 export function calcPersonStats(shifts, quota, dayInfos = []) {
-  const actual = { D: 0, N: 0, Off: 0, AM: 0, W6Off: 0 }
+  const actual = { D: 0, N: 0, Off: 0, W6Off: 0 }
 
-  // Build a set of saturday days for W6Off
+  // Build a set of saturday days for W6Off (based on dayOfWeek === 6 to match quota calc)
   const satDays = new Set(
-    dayInfos.filter(d => d.dayType === 'saturday').map(d => String(d.day))
+    dayInfos.filter(d => d.dayOfWeek === 6).map(d => String(d.day))
   )
 
   Object.entries(shifts || {}).forEach(([day, val]) => {
     if (!val) return
     if (actual[val] !== undefined) actual[val]++
+    else actual[val] = 1
+
     if (val === 'Off' && satDays.has(String(day))) actual.W6Off++
   })
 
   const result = {}
-  ;['D', 'N', 'Off', 'W6Off'].forEach(type => {
+  // Check all types that have a quota or are standard
+  const typesToCheck = new Set(['D', 'N', 'Off', 'W6Off', ...Object.keys(quota || {})])
+  
+  typesToCheck.forEach(type => {
     const q = quota?.[type] ?? null
-    const a = actual[type]
+    const a = actual[type] || 0
     const diff = q !== null ? a - q : 0
     let status = 'ok'
     if (q !== null && diff < 0) status = 'under'
@@ -133,33 +146,39 @@ export function calcPersonStats(shifts, quota, dayInfos = []) {
  * @param {number} day
  * @param {string} dayType
  * @param {Object} settings
- * @returns {{ counts: { D, N, Off, AM }, required: { D, N, Off, AM }, status: { D, N, Off, AM } }}
+ * @returns {Object} { counts, required, status }
  */
 export function calcDayStats(allShifts, day, dayType, settings) {
-  const counts = { D: 0, N: 0, Off: 0, AM: 0 }
+  const counts = { D: 0, N: 0, Off: 0 }
   const key = `day_${day}`
 
   Object.values(allShifts || {}).forEach(row => {
     const val = row[key]
-    if (val && counts[val] !== undefined) counts[val]++
+    if (val) {
+      if (counts[val] !== undefined) counts[val]++
+      else counts[val] = (counts[val] || 0) + 1
+    }
   })
 
-  const required = {
-    D: getRequiredCount('D', dayType, settings),
-    N: getRequiredCount('N', dayType, settings),
-    Off: null, // Off 以上限判斷，上限由外部傳入
-    AM: getRequiredCount('AM', dayType, settings)
-  }
+  const required = {}
+  Object.keys(counts).forEach(t => {
+    if (t === 'Off') {
+      required[t] = null
+    } else {
+      required[t] = getRequiredCount(t, dayType, settings)
+    }
+  })
 
   const status = {}
-  ;['D', 'N', 'AM'].forEach(t => {
-    const r = required[t]
+  Object.keys(counts).forEach(t => {
+    if (t === 'Off') { status[t] = 'ok'; return }
+    const r = required[t] ?? null
     if (r === null) { status[t] = 'ok'; return }
     if (counts[t] < r) status[t] = 'under'
     else if (counts[t] > r) status[t] = 'over'
     else status[t] = 'ok'
   })
-  status.Off = 'ok' // Off 狀態由超預邏輯另外判斷
+  if (!status.Off) status.Off = 'ok'
 
   return { counts, required, status }
 }
@@ -189,7 +208,8 @@ export function calcScheduleHealth(allShifts, allQuotas, settings, dayInfos) {
       quota,
       dayInfos
     )
-    ;['D', 'N', 'Off'].forEach(type => {
+    
+    Object.keys(stats.byType).forEach(type => {
       const { diff, status } = stats.byType[type]
       if (status !== 'ok') {
         overQuota.push({ userId, type, diff, actual: stats.byType[type].actual, quota: quota[type] })
@@ -200,7 +220,7 @@ export function calcScheduleHealth(allShifts, allQuotas, settings, dayInfos) {
   // Check per-day staffing
   dayInfos.forEach(({ day, dayType }) => {
     const dayStats = calcDayStats(allShifts, day, dayType, settings)
-    ;['D', 'N', 'AM'].forEach(t => {
+    Object.keys(dayStats.status).forEach(t => {
       if (dayStats.status[t] !== 'ok') {
         anomalies.push({ day, dayType, shift: t, actual: dayStats.counts[t], required: dayStats.required[t] })
       }
