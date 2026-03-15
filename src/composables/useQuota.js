@@ -34,7 +34,7 @@ export function useQuota(scheduleStore, settingsStore, holidaysRef) {
     const totals = { D: 0, N: 0, Off: 0, W6Off: 0 }
 
     const activeUsers = users.filter(
-      u => u.isActive !== false && u.isActive !== 'false'
+      u => u.isActive !== false && u.isActive !== 'false' && !(u.noSchedule === true || u.noSchedule === 'true')
     )
     const totalPeople = activeUsers.length
 
@@ -65,7 +65,7 @@ export function useQuota(scheduleStore, settingsStore, holidaysRef) {
   const perPersonQuota = computed(() => {
     const allUsers = unwrap(settingsStore.users) || []
     const activeUsers = allUsers.filter(
-      u => u.isActive !== false && u.isActive !== 'false'
+      u => u.isActive !== false && u.isActive !== 'false' && !(u.noSchedule === true || u.noSchedule === 'true')
     )
     const count = activeUsers.length
     if (count === 0) return { D: 0, N: 0, Off: 0, W6Off: 0 }

@@ -89,6 +89,11 @@
                 v-for="dayInfo in monthDays"
                 :key="dayInfo.day"
                 class="border border-gray-200 p-0"
+                :data-uid="user.userId"
+                :data-d="dayInfo.day"
+                @mousedown="onCellMousedown(user.userId, dayInfo.day, $event)"
+                @mouseenter="onCellMouseenter(user.userId, dayInfo.day)"
+                @touchstart="onCellTouchStart(user.userId, dayInfo.day, $event)"
               >
                 <ShiftCell
                   :shift="getUserDayRequest(user.userId, dayInfo.day)"
@@ -96,6 +101,8 @@
                   :isOverBooked="isUserDayDisputed(user.userId, dayInfo.day)"
                   :requestShift="getRotationRef(user.userId, dayInfo.day)"
                   :includeRequestOnly="true"
+                  :suppressClick="isDragging"
+                  :isInDragSelection="isDragSelected(user.userId, dayInfo.day)"
                   @update="(shift) => handleUpdateRequest(user.userId, dayInfo.day, shift)"
                 />
               </td>
@@ -116,14 +123,38 @@
       />
     </main>
   </div>
+
+  <!-- Drag batch picker -->
+  <Teleport to="body">
+    <template v-if="showDragPicker">
+      <div class="fixed inset-0 z-40" @click="cancelDrag"></div>
+      <div
+        class="fixed z-50 bg-white border border-gray-300 rounded-lg shadow-xl p-3"
+        :style="dragPickerStyle"
+      >
+        <div class="text-xs text-gray-500 mb-2">批量預約 {{ dragCells.length }} 格</div>
+        <div class="flex flex-wrap gap-1.5">
+          <button
+            v-for="opt in dragOptions"
+            :key="String(opt.value)"
+            :class="['text-xs px-2.5 py-1 rounded font-medium transition-all cursor-pointer', opt.cellClass]"
+            @click.stop="applyDragShift(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+      </div>
+    </template>
+  </Teleport>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRequestStore } from '../stores/request.js'
 import { useScheduleStore } from '../stores/schedule.js'
 import { useSettingsStore } from '../stores/settings.js'
 import { useAuthStore } from '../stores/auth.js'
+import { useShiftTypesStore } from '../stores/shiftTypes.js'
 import { useHoliday } from '../composables/useHoliday.js'
 import { useRotationProjection } from '../composables/useRotationProjection.js'
 import { getMonthDays, getDayType, DAY_NAMES, addMonths, getCurrentYYYYMM } from '../utils/dateHelper.js'
@@ -136,6 +167,7 @@ const requestStore = useRequestStore()
 const scheduleStore = useScheduleStore()
 const settingsStore = useSettingsStore()
 const authStore = useAuthStore()
+const shiftTypesStore = useShiftTypesStore()
 const { holidays, fetchHolidays } = useHoliday()
 const { projectMonth } = useRotationProjection()
 
@@ -159,8 +191,7 @@ const currentYYYYMM = getCurrentYYYYMM()
 const isCurrentMonth = computed(() => requestStore.currentMonth === currentYYYYMM)
 
 const sortedUsers = computed(() =>
-  [...settingsStore.users]
-    .filter(u => u.isActive !== false && u.isActive !== 'false')
+  [...settingsStore.schedulingUsers]
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
 )
 
@@ -234,7 +265,161 @@ async function handleUpdateRequest(userId, day, shift) {
   }
 }
 
+// ── Drag-to-select batch request ─────────────────────────────
+const isDragging = ref(false)
+const dragCells = ref([])
+const showDragPicker = ref(false)
+const dragPickerPos = ref({ x: 0, y: 0 })
+let dragStarted = false
+
+const dragOptions = computed(() => [
+  ...shiftTypesStore.requestTypes.map(t => ({
+    value: t.id,
+    label: t.label,
+    cellClass: shiftTypesStore.getCellClass(t.id)
+  })),
+  { value: null, label: '✕ 清除', cellClass: 'bg-gray-100 text-gray-600 hover:bg-gray-200' }
+])
+
+const dragPickerStyle = computed(() => {
+  const margin = 8
+  const pickerW = 300
+  const pickerH = 130
+  const x = Math.min(dragPickerPos.value.x + margin, window.innerWidth - pickerW - margin)
+  const y = Math.min(dragPickerPos.value.y + margin, window.innerHeight - pickerH - margin)
+  return { top: `${y}px`, left: `${x}px` }
+})
+
+function isCellEditable(userId) {
+  return !scheduleStore.isLocked && (authStore.isScheduler || userId === authStore.user?.userId)
+}
+
+function isDragSelected(userId, day) {
+  return dragCells.value.some(c => c.userId === userId && c.day === day)
+}
+
+function onCellMousedown(userId, day, event) {
+  if (!isCellEditable(userId)) return
+  event.preventDefault()
+  dragStarted = true
+  isDragging.value = false
+  dragCells.value = [{ userId, day }]
+}
+
+function onCellMouseenter(userId, day) {
+  if (!dragStarted || !isCellEditable(userId)) return
+  if (!dragCells.value.some(c => c.userId === userId && c.day === day)) {
+    isDragging.value = true
+    dragCells.value.push({ userId, day })
+  }
+}
+
+function onDocumentMouseup(event) {
+  if (!dragStarted) return
+  dragStarted = false
+  if (isDragging.value && dragCells.value.length > 1) {
+    showDragPicker.value = true
+    dragPickerPos.value = { x: event.clientX, y: event.clientY }
+    setTimeout(() => { isDragging.value = false }, 50)
+  } else {
+    isDragging.value = false
+    dragCells.value = []
+  }
+}
+
+async function applyDragShift(shift) {
+  const cells = [...dragCells.value]
+  dragCells.value = []
+  showDragPicker.value = false
+  await Promise.all(
+    cells
+      .filter(({ userId }) => isCellEditable(userId))
+      .map(({ userId, day }) => requestStore.saveRequest(userId, day, shift))
+  )
+}
+
+function cancelDrag() {
+  dragCells.value = []
+  showDragPicker.value = false
+}
+
+// ── Touch long-press drag ─────────────────────────────────────
+let touchTimer = null
+let touchDragActive = false
+
+function onCellTouchStart(userId, day, event) {
+  if (!isCellEditable(userId)) return
+  clearTimeout(touchTimer)
+  touchDragActive = false
+  touchTimer = setTimeout(() => {
+    touchDragActive = true
+    dragStarted = true
+    isDragging.value = false
+    dragCells.value = [{ userId, day }]
+    if (navigator.vibrate) navigator.vibrate(30)
+  }, 400)
+}
+
+function onDocumentTouchMove(event) {
+  if (!touchDragActive) {
+    if (touchTimer) { clearTimeout(touchTimer); touchTimer = null }
+    return
+  }
+  event.preventDefault()
+  const touch = event.touches[0]
+  const el = document.elementFromPoint(touch.clientX, touch.clientY)
+  if (!el) return
+  const td = el.closest('[data-uid]')
+  if (!td) return
+  const uid = td.dataset.uid
+  const day = parseInt(td.dataset.d)
+  if (!uid || !day || !isCellEditable(uid)) return
+  if (!dragCells.value.some(c => c.userId === uid && c.day === day)) {
+    isDragging.value = true
+    dragCells.value.push({ userId: uid, day })
+  }
+}
+
+function onDocumentTouchEnd(event) {
+  clearTimeout(touchTimer)
+  touchTimer = null
+  if (!touchDragActive) return
+  touchDragActive = false
+  if (!dragStarted) return
+  dragStarted = false
+  if (isDragging.value && dragCells.value.length > 1) {
+    const touch = event.changedTouches[0]
+    showDragPicker.value = true
+    dragPickerPos.value = { x: touch.clientX, y: touch.clientY }
+    setTimeout(() => { isDragging.value = false }, 50)
+  } else {
+    isDragging.value = false
+    dragCells.value = []
+  }
+}
+
+function onDocumentTouchCancel() {
+  clearTimeout(touchTimer)
+  touchTimer = null
+  touchDragActive = false
+  dragStarted = false
+  isDragging.value = false
+  dragCells.value = []
+}
+
+onUnmounted(() => {
+  document.removeEventListener('mouseup', onDocumentMouseup)
+  document.removeEventListener('touchmove', onDocumentTouchMove)
+  document.removeEventListener('touchend', onDocumentTouchEnd)
+  document.removeEventListener('touchcancel', onDocumentTouchCancel)
+})
+
 onMounted(async () => {
+  document.addEventListener('mouseup', onDocumentMouseup)
+  document.addEventListener('touchmove', onDocumentTouchMove, { passive: false })
+  document.addEventListener('touchend', onDocumentTouchEnd)
+  document.addEventListener('touchcancel', onDocumentTouchCancel)
+
   // Default to next month for request submission
   const yyyyMM = addMonths(getCurrentYYYYMM(), 1)
   requestStore.currentMonth = yyyyMM

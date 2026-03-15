@@ -103,7 +103,7 @@ export function useRotationProjection() {
 
     const pools = await getEffectiveRotationPools(yyyyMM)
     const activeUsers = settingsStore.users.filter(
-      u => u.isActive !== false && u.isActive !== 'false'
+      u => u.isActive !== false && u.isActive !== 'false' && !(u.noSchedule === true || u.noSchedule === 'true')
     )
 
     const result = runAutoSchedule(

@@ -46,7 +46,7 @@
             <th class="text-left px-4 py-3 font-medium text-gray-700">姓名</th>
             <th class="text-left px-4 py-3 font-medium text-gray-700">電子郵件</th>
             <th class="text-left px-4 py-3 font-medium text-gray-700">角色</th>
-            <th class="text-center px-4 py-3 font-medium text-gray-700">參與排班</th>
+            <th class="text-center px-4 py-3 font-medium text-gray-700">帳號狀態</th>
             <th class="text-center px-4 py-3 font-medium text-gray-700">支援模式</th>
             <th class="text-center px-4 py-3 font-medium text-gray-700">排序</th>
             <th class="text-right px-4 py-3 font-medium text-gray-700">操作</th>
@@ -82,11 +82,15 @@
                 :class="[
                   'px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
                   user.isActive !== false && user.isActive !== 'false'
-                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                    ? (user.noSchedule === true || user.noSchedule === 'true'
+                        ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                        : 'bg-green-100 text-green-700 hover:bg-green-200')
                     : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
                 ]"
               >
-                {{ user.isActive !== false && user.isActive !== 'false' ? '排班中' : '停用' }}
+                {{ user.isActive !== false && user.isActive !== 'false'
+                    ? (user.noSchedule === true || user.noSchedule === 'true' ? '僅登入' : '已啟用')
+                    : '已停用' }}
               </button>
             </td>
             <td class="px-4 py-3 text-center">
@@ -144,7 +148,14 @@
           </div>
           <div class="flex items-center gap-2">
             <input v-model="form.isActive" type="checkbox" id="isActive" class="rounded" />
-            <label for="isActive" class="text-sm text-gray-700">參與排班</label>
+            <label for="isActive" class="text-sm text-gray-700">帳號啟用</label>
+          </div>
+          <div v-if="form.isActive" class="flex items-center gap-2">
+            <input v-model="form.noSchedule" type="checkbox" id="noSchedule" class="rounded" />
+            <label for="noSchedule" class="text-sm text-gray-700">
+              不參與排班
+              <span class="text-xs text-gray-400 ml-1">（可登入系統，但不排入班表）</span>
+            </label>
           </div>
           <div v-if="form.isActive" class="flex items-center gap-2">
             <input v-model="form.isSupport" type="checkbox" id="isSupport" class="rounded" />
@@ -346,7 +357,7 @@ async function handleBatchRemove() {
 }
 
 // ── CSV Template ──────────────────────────────────────────────
-const CSV_HEADERS = ['姓名', '電子郵件', '密碼', '角色', '代號', '參與排班', '支援模式']
+const CSV_HEADERS = ['姓名', '電子郵件', '密碼', '角色', '代號', '帳號啟用', '支援模式']
 const CSV_TEMPLATE_ROWS = [
   ['王小明', 'wang@example.com', 'password123', 'member', 'A', 'TRUE', 'FALSE'],
   ['李大華', 'li@example.com', '', 'member', 'B', 'TRUE', 'FALSE']
@@ -390,7 +401,7 @@ function parseImportCSV(text) {
   const pwCol       = col(['密碼', 'password'])
   const roleCol     = col(['角色', 'role'])
   const codeCol     = col(['代號', 'code'])
-  const activeCol   = col(['參與排班', 'isActive'])
+  const activeCol   = col(['帳號啟用', 'isActive'])
   const supportCol  = col(['支援模式', 'isSupport'])
   const baseSort    = settingsStore.users.length
 
@@ -497,6 +508,7 @@ const form = reactive({
   role: 'member',
   isActive: true,
   isSupport: false,
+  noSchedule: false,
   sortOrder: 0,
   code: ''
 })
@@ -549,6 +561,7 @@ function openAddForm() {
     role: 'member',
     isActive: true,
     isSupport: false,
+    noSchedule: false,
     sortOrder: settingsStore.users.length,
     code: nextAvailableCode()
   })
@@ -565,6 +578,7 @@ function openEditForm(user) {
     role: user.role,
     isActive: user.isActive !== false && user.isActive !== 'false',
     isSupport: user.isSupport === true || user.isSupport === 'true',
+    noSchedule: user.noSchedule === true || user.noSchedule === 'true',
     sortOrder: user.sortOrder || 0,
     code: user.code || ''
   })
@@ -598,6 +612,7 @@ async function handleSubmit() {
       role: form.role,
       isActive: form.isActive,
       isSupport: form.isSupport,
+      noSchedule: form.noSchedule,
       sortOrder: form.sortOrder,
       code: form.code.toUpperCase(),
       ...(passwordHash !== undefined && { passwordHash })
@@ -618,6 +633,7 @@ async function handleSubmit() {
       role: form.role,
       isActive: form.isActive,
       isSupport: form.isSupport,
+      noSchedule: form.noSchedule,
       sortOrder: form.sortOrder,
       code: form.code.toUpperCase()
     })

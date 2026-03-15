@@ -127,7 +127,7 @@ const form = reactive({
 })
 
 const otherUsers = computed(() =>
-  props.users.filter(u => u.userId !== props.currentUserId && u.isActive !== false && u.isActive !== 'false')
+  props.users.filter(u => u.userId !== props.currentUserId && u.isActive !== false && u.isActive !== 'false' && !(u.noSchedule === true || u.noSchedule === 'true'))
 )
 
 const currentUserName = computed(() =>

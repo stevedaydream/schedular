@@ -81,24 +81,73 @@ var Auth = (function () {
   // ─── Auth Actions ──────────────────────────────────────────────────────────
 
   function login(body) {
-    const { email, passwordHash } = body;
-    if (!email || !passwordHash) {
-      return { success: false, error: '請提供 email 和密碼' };
+  const { email, passwordHash } = body;
+  if (!email || !passwordHash) {
+    return { success: false, error: '請提供 email 和密碼' };
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(USERS_SHEET);
+  if (!sheet) return { success: false, error: '系統未初始化，請執行 Setup' };
+
+  const users = sheetToObjects(sheet);
+  const user = users.find(u =>
+    u.email === email &&
+    String(u.passwordHash).toLowerCase() === String(passwordHash).toLowerCase()
+  );
+
+  if (!user) {
+    return { success: false, error: 'Email 或密碼不正確' };
+  }
+
+  const isActive = user.isActive === true || user.isActive === 'true' || user.isActive === 'TRUE';
+  if (!isActive) {
+    return { success: false, error: '此帳號已停用，請聯絡管理員' };
+  }
+
+  const token = createJWT({
+    userId: user.userId,
+    email: user.email,
+    role: user.role,
+    name: user.name
+  });
+
+  return { success: true, data: { token, user: { userId: user.userId, email: user.email, role: user.role, name: user.name } } };
+}
+
+function googleLogin(body) {
+  const { idToken } = body;
+  if (!idToken) return { success: false, error: '缺少 Google id_token' };
+
+  // Verify Google id_token by calling tokeninfo endpoint
+  try {
+    const response = UrlFetchApp.fetch(
+      'https://oauth2.googleapis.com/tokeninfo?id_token=' + idToken
+    );
+    const tokenInfo = JSON.parse(response.getContentText());
+
+    if (tokenInfo.error) {
+      return { success: false, error: 'Google token 驗證失敗：' + tokenInfo.error };
     }
 
+    const email = tokenInfo.email;
+    if (!email) return { success: false, error: '無法取得 email' };
+
+    // Find user in Users sheet
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(USERS_SHEET);
-    if (!sheet) return { success: false, error: '系統未初始化，請執行 Setup' };
+    if (!sheet) return { success: false, error: '系統未初始化' };
 
     const users = sheetToObjects(sheet);
-    const user = users.find(u =>
-      u.email === email &&
-      String(u.passwordHash).toLowerCase() === String(passwordHash).toLowerCase() &&
-      (u.isActive === true || u.isActive === 'true' || u.isActive === 'TRUE')
-    );
+    const user = users.find(u => u.email === email);
 
     if (!user) {
-      return { success: false, error: 'Email 或密碼不正確' };
+      return { success: false, error: '此 Google 帳號未在系統中，請聯絡管理員' };
+    }
+
+    const isActive = user.isActive === true || user.isActive === 'true' || user.isActive === 'TRUE';
+    if (!isActive) {
+      return { success: false, error: '此帳號已停用，請聯絡管理員' };
     }
 
     const token = createJWT({
@@ -109,53 +158,11 @@ var Auth = (function () {
     });
 
     return { success: true, data: { token, user: { userId: user.userId, email: user.email, role: user.role, name: user.name } } };
+
+  } catch (err) {
+    return { success: false, error: 'Google 登入失敗：' + err.message };
   }
-
-  function googleLogin(body) {
-    const { idToken } = body;
-    if (!idToken) return { success: false, error: '缺少 Google id_token' };
-
-    // Verify Google id_token by calling tokeninfo endpoint
-    try {
-      const response = UrlFetchApp.fetch(
-        'https://oauth2.googleapis.com/tokeninfo?id_token=' + idToken
-      );
-      const tokenInfo = JSON.parse(response.getContentText());
-
-      if (tokenInfo.error) {
-        return { success: false, error: 'Google token 驗證失敗：' + tokenInfo.error };
-      }
-
-      const email = tokenInfo.email;
-      if (!email) return { success: false, error: '無法取得 email' };
-
-      // Find user in Users sheet
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      const sheet = ss.getSheetByName(USERS_SHEET);
-      if (!sheet) return { success: false, error: '系統未初始化' };
-
-      const users = sheetToObjects(sheet);
-      const user = users.find(u =>
-        u.email === email &&
-        (u.isActive === true || u.isActive === 'true' || u.isActive === 'TRUE')
-      );
-
-      if (!user) {
-        return { success: false, error: '此 Google 帳號未在系統中，請聯絡管理員' };
-      }
-
-      const token = createJWT({
-        userId: user.userId,
-        email: user.email,
-        role: user.role,
-        name: user.name
-      });
-
-      return { success: true, data: { token, user: { userId: user.userId, email: user.email, role: user.role, name: user.name } } };
-    } catch (err) {
-      return { success: false, error: 'Google 登入失敗：' + err.message };
-    }
-  }
+}
 
   // ─── User CRUD ─────────────────────────────────────────────────────────────
 
@@ -172,7 +179,8 @@ var Auth = (function () {
       isActive: u.isActive === true || u.isActive === 'true' || u.isActive === 'TRUE',
       isSupport: u.isSupport === true || u.isSupport === 'true' || u.isSupport === 'TRUE',
       sortOrder: parseInt(u.sortOrder) || 0,
-      code: u.code || ''
+      code: u.code || '',
+      noSchedule: u.noSchedule === true || u.noSchedule === 'true' || u.noSchedule === 'TRUE'
       // Note: passwordHash is NOT returned
     }));
 
@@ -180,7 +188,7 @@ var Auth = (function () {
   }
 
   function addUser(body) {
-    const { name, email, passwordHash, role, isActive, isSupport, sortOrder, code } = body;
+    const { name, email, passwordHash, role, isActive, isSupport, sortOrder, code, noSchedule } = body;
     if (!name || !email) return { success: false, error: '姓名和 Email 為必填' };
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -189,7 +197,7 @@ var Auth = (function () {
 
     try {
       const sheet = getOrCreateSheet(ss, USERS_SHEET,
-        ['userId', 'name', 'role', 'email', 'passwordHash', 'isActive', 'isSupport', 'sortOrder', 'code']);
+        ['userId', 'name', 'role', 'email', 'passwordHash', 'isActive', 'isSupport', 'sortOrder', 'code', 'noSchedule']);
 
       // Check duplicate email
       const users = sheetToObjects(sheet);
@@ -208,10 +216,11 @@ var Auth = (function () {
         isActive !== undefined ? isActive : true,
         isSupport === true || isSupport === 'true' ? true : false,
         sortOrder || 0,
-        userCode
+        userCode,
+        noSchedule || false
       ]);
 
-      return { success: true, data: { userId, name, role: role || 'member', email, isActive: isActive !== undefined ? isActive : true, isSupport: !!isSupport, sortOrder: sortOrder || 0, code: userCode } };
+      return { success: true, data: { userId, name, role: role || 'member', email, isActive: isActive !== undefined ? isActive : true, isSupport: !!isSupport, sortOrder: sortOrder || 0, code: userCode, noSchedule: !!noSchedule } };
     } finally {
       lock.releaseLock();
     }
@@ -240,7 +249,7 @@ var Auth = (function () {
       const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
       const row = sheet.getRange(rowIdx, 1, 1, sheet.getLastColumn()).getValues()[0];
 
-      const { name, role, isActive, isSupport, sortOrder, passwordHash, code } = body;
+      const { name, role, isActive, isSupport, sortOrder, passwordHash, code, noSchedule } = body;
 
       const updates = {};
       if (name !== undefined) updates.name = name;
@@ -250,6 +259,7 @@ var Auth = (function () {
       if (sortOrder !== undefined) updates.sortOrder = sortOrder;
       if (passwordHash !== undefined) updates.passwordHash = passwordHash;
       if (code !== undefined) updates.code = code;
+      if (noSchedule !== undefined) updates.noSchedule = noSchedule === true || noSchedule === 'true' ? true : false;
 
       headers.forEach((h, i) => {
         if (updates[h] !== undefined) row[i] = updates[h];
@@ -375,7 +385,7 @@ var Auth = (function () {
 
     try {
       const sheet = getOrCreateSheet(ss, USERS_SHEET,
-        ['userId', 'name', 'role', 'email', 'passwordHash', 'isActive', 'isSupport', 'sortOrder', 'code']);
+        ['userId', 'name', 'role', 'email', 'passwordHash', 'isActive', 'isSupport', 'sortOrder', 'code', 'noSchedule']);
 
       const existingUsers = sheetToObjects(sheet);
       const existingEmails = new Set(existingUsers.map(function(u) { return u.email; }));
@@ -396,13 +406,14 @@ var Auth = (function () {
         const userCode = u.code || '';
         const isActive = u.isActive !== false && u.isActive !== 'false' && u.isActive !== 'FALSE';
         const isSupport = u.isSupport === true || u.isSupport === 'true' || u.isSupport === 'TRUE';
+        const noSchedule = u.noSchedule === true || u.noSchedule === 'true' ? true : false;
         sheet.appendRow([
           userId, u.name, u.role || 'member', u.email, u.passwordHash || '',
-          isActive, isSupport, u.sortOrder || 0, userCode
+          isActive, isSupport, u.sortOrder || 0, userCode, noSchedule
         ]);
         existingEmails.add(u.email);
         added.push({ userId, name: u.name, email: u.email, role: u.role || 'member',
-          isActive, isSupport, sortOrder: u.sortOrder || 0, code: userCode });
+          isActive, isSupport, sortOrder: u.sortOrder || 0, code: userCode, noSchedule });
       });
 
       return { success: true, data: { added, errors } };

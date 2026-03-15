@@ -1,13 +1,13 @@
 <template>
   <div
+    ref="cellEl"
     :class="[
       'relative w-full min-w-[44px] min-h-[36px] flex items-center justify-center select-none',
       cellClass,
       isEditable ? 'cursor-pointer' : 'cursor-default'
     ]"
     :title="tooltipText"
-    v-click-outside="() => hovered = false"
-    @click="isEditable && !suppressClick && (hovered = !hovered)"
+    @click="isEditable && !suppressClick && openPicker()"
   >
     <span class="text-xs font-medium">{{ displayValue }}</span>
 
@@ -53,33 +53,40 @@
       ]"
       :title="requestShift === shift ? '預約已確認' : isDisputedRequest ? '爭議預約：' + requestShift : '預約：' + requestShift"
     >{{ requestShift === shift ? '✓' : requestShift }}</span>
-
-    <!-- Radial picker -->
-    <div
-      v-if="hovered && isEditable"
-      class="absolute z-30 top-1/2 left-1/2"
-      style="width: 0; height: 0;"
-      @click.stop
-    >
-      <!-- Cancel at center -->
-      <button
-        class="absolute w-7 h-7 rounded-full bg-gray-200 text-gray-600 text-xs font-medium hover:bg-gray-300 z-10 flex items-center justify-center shadow"
-        style="transform: translate(-50%, -50%)"
-        @click.stop="select(null)"
-      >✕</button>
-      <!-- Shift options radially -->
-      <button
-        v-for="opt in radialOptions"
-        :key="opt.value"
-        :class="[
-          'absolute w-8 h-8 rounded-full text-xs font-medium flex items-center justify-center transition-colors shadow border',
-          shift === opt.value ? opt.activeClass : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-        ]"
-        :style="opt.style"
-        @click.stop="select(opt.value)"
-      >{{ opt.label }}</button>
-    </div>
   </div>
+
+  <!-- Radial picker — Teleport to body to avoid overflow clipping -->
+  <Teleport to="body">
+    <template v-if="hovered && isEditable">
+      <!-- Backdrop -->
+      <div class="fixed inset-0 z-[90]" @click="hovered = false"></div>
+      <!-- Picker -->
+      <div
+        class="fixed z-[91]"
+        style="width: 0; height: 0; pointer-events: none"
+        :style="{ top: pickerPos.y + 'px', left: pickerPos.x + 'px' }"
+        @click.stop
+      >
+        <!-- Cancel at center -->
+        <button
+          class="absolute w-7 h-7 rounded-full bg-gray-200 text-gray-600 text-xs font-medium hover:bg-gray-300 z-10 flex items-center justify-center shadow pointer-events-auto"
+          style="transform: translate(-50%, -50%)"
+          @click.stop="select(null)"
+        >✕</button>
+        <!-- Shift options radially -->
+        <button
+          v-for="opt in radialOptions"
+          :key="opt.value"
+          :class="[
+            'absolute w-8 h-8 rounded-full text-xs font-medium flex items-center justify-center transition-colors shadow border pointer-events-auto',
+            shift === opt.value ? opt.activeClass : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+          ]"
+          :style="opt.style"
+          @click.stop="select(opt.value)"
+        >{{ opt.label }}</button>
+      </div>
+    </template>
+  </Teleport>
 </template>
 
 <script setup>
@@ -87,6 +94,7 @@ import { ref, computed, watch } from 'vue'
 import { useShiftTypesStore } from '../../stores/shiftTypes.js'
 
 const RADIAL_RADIUS = 50
+const BUTTON_HALF = 16 // half of w-8 (32px)
 
 const props = defineProps({
   shift: { type: String, default: null },
@@ -106,7 +114,27 @@ const props = defineProps({
 const emit = defineEmits(['update'])
 
 const shiftTypesStore = useShiftTypesStore()
+const cellEl = ref(null)
 const hovered = ref(false)
+const pickerPos = ref({ x: 0, y: 0 })
+
+function openPicker() {
+  if (hovered.value) {
+    hovered.value = false
+    return
+  }
+  if (cellEl.value) {
+    const rect = cellEl.value.getBoundingClientRect()
+    const rawX = rect.left + rect.width / 2
+    const rawY = rect.top + rect.height / 2
+    const margin = RADIAL_RADIUS + BUTTON_HALF + 4
+    pickerPos.value = {
+      x: Math.max(margin, Math.min(rawX, window.innerWidth - margin)),
+      y: Math.max(margin, Math.min(rawY, window.innerHeight - margin))
+    }
+  }
+  hovered.value = true
+}
 
 const radialOptions = computed(() => {
   const types = props.includeRequestOnly ? shiftTypesStore.requestTypes : shiftTypesStore.activeTypes

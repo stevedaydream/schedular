@@ -819,7 +819,7 @@ const showRefillPrompt = ref(false)
 const clearableCount = computed(() => {
   const data = scheduleStore.scheduleData
   const days = getMonthDays(scheduleStore.currentMonth)
-  const activeUsers = settingsStore.users.filter(u => u.isActive !== false && u.isActive !== 'false')
+  const activeUsers = settingsStore.schedulingUsers
   let count = 0
   activeUsers.forEach(u => {
     days.forEach(({ day, dayOfWeek, dateStr }) => {
@@ -874,9 +874,7 @@ const disputedCount = computed(() => {
 })
 
 const monthSummary = computed(() => {
-  const activeUsers = settingsStore.users.filter(
-    u => u.isActive !== false && u.isActive !== 'false'
-  ).length
+  const activeUsers = settingsStore.schedulingUsers.length
   if (activeUsers === 0) return null
 
   const s = settingsStore.settings
@@ -1158,8 +1156,7 @@ function printSchedule() {
 function exportCSV() {
   const yyyyMM = scheduleStore.currentMonth
   const days = getMonthDays(yyyyMM)
-  const activeUsers = settingsStore.users
-    .filter(u => u.isActive !== false && u.isActive !== 'false')
+  const activeUsers = [...settingsStore.schedulingUsers]
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
   // Header row: 姓名, 1, 2, 3, ..., 31
   const header = ['姓名', ...days.map(d => d.day)].join(',')
@@ -1183,8 +1180,7 @@ const showLockConfirm = ref(false)
 const lockSummary = computed(() => {
   const data = scheduleStore.scheduleData
   const days = getMonthDays(scheduleStore.currentMonth)
-  const activeUserIds = settingsStore.users
-    .filter(u => u.isActive !== false && u.isActive !== 'false')
+  const activeUserIds = settingsStore.schedulingUsers
     .map(u => u.userId)
   let empty = 0
   const totals = { D: 0, N: 0, Off: 0, AM: 0 }
@@ -1222,7 +1218,7 @@ async function handleClear() {
   if (clearMode.value === 'weekday') {
     // Weekday-only: batch-save null for weekday cells locally
     const days = getMonthDays(scheduleStore.currentMonth)
-    const activeUsers = settingsStore.users.filter(u => u.isActive !== false && u.isActive !== 'false')
+    const activeUsers = settingsStore.schedulingUsers
     const shifts = []
     activeUsers.forEach(u => {
       days.forEach(({ day, dayOfWeek }) => {
@@ -1250,8 +1246,7 @@ async function handleClear() {
 // Request panel helpers
 const requestMonthDays = computed(() => getMonthDays(scheduleStore.currentMonth))
 const requestSortedUsers = computed(() =>
-  [...settingsStore.users]
-    .filter(u => u.isActive !== false && u.isActive !== 'false')
+  [...settingsStore.schedulingUsers]
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
 )
 function getReqShift(userId, day) {
@@ -1301,8 +1296,7 @@ function getUserCode(userId) {
 }
 
 const svActiveUsers = computed(() =>
-  [...settingsStore.users]
-    .filter(u => u.isActive !== false && u.isActive !== 'false')
+  [...settingsStore.schedulingUsers]
     .sort((a, b) => (parseInt(a.sortOrder) || 0) - (parseInt(b.sortOrder) || 0))
 )
 

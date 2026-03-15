@@ -36,7 +36,7 @@ export function useAutoSchedule(scheduleStore, settingsStore) {
 
       // Get active users
       const activeUsers = users.filter(
-        u => u.isActive !== false && u.isActive !== 'false'
+        u => u.isActive !== false && u.isActive !== 'false' && !(u.noSchedule === true || u.noSchedule === 'true')
       )
 
       if (activeUsers.length === 0) {

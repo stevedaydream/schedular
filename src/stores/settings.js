@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { api } from '../api/gas.js'
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -17,6 +17,13 @@ export const useSettingsStore = defineStore('settings', () => {
     sunN: 1
   })
   const users = ref([])
+  // 排班參與者：已啟用且未設 noSchedule 的人員
+  const schedulingUsers = computed(() =>
+    users.value.filter(u =>
+      (u.isActive !== false && u.isActive !== 'false' && u.isActive !== 'FALSE') &&
+      !(u.noSchedule === true || u.noSchedule === 'true' || u.noSchedule === 'TRUE')
+    )
+  )
   const rotationPools = ref([])
   const loading = ref(false)
   const error = ref(null)
@@ -174,6 +181,7 @@ export const useSettingsStore = defineStore('settings', () => {
   return {
     settings,
     users,
+    schedulingUsers,
     rotationPools,
     loading,
     error,

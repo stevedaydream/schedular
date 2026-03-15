@@ -238,7 +238,7 @@ const monthDays = computed(() =>
 
 const sortedUsers = computed(() =>
   [...props.users]
-    .filter(u => u.isActive !== false && u.isActive !== 'false')
+    .filter(u => u.isActive !== false && u.isActive !== 'false' && !(u.noSchedule === true || u.noSchedule === 'true'))
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
 )
 

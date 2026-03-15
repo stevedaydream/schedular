@@ -142,7 +142,7 @@ export function validateMonthHandover(currentPool, prevPool) {
  * @returns {{ schedule, conflicts, updatedPools }}
  */
 export function runAutoSchedule(users, holidays, settings, pools, yyyyMM) {
-  const activeUsers = users.filter(u => u.isActive !== false && u.isActive !== 'false')
+  const activeUsers = users.filter(u => u.isActive !== false && u.isActive !== 'false' && !(u.noSchedule === true || u.noSchedule === 'true'))
   // 支援人員不參與 Off 輪序池
   const supportIds = new Set(
     activeUsers.filter(u => u.isSupport === true || u.isSupport === 'true').map(u => u.userId)
