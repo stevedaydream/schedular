@@ -790,6 +790,7 @@ import { useAuthStore } from '../stores/auth.js'
 import { useRequestStore } from '../stores/request.js'
 import { api } from '../api/gas.js'
 import { useAutoSchedule } from '../composables/useAutoSchedule.js'
+import { useQuota } from '../composables/useQuota.js'
 import { useShiftTypesStore } from '../stores/shiftTypes.js'
 import { useHoliday } from '../composables/useHoliday.js'
 import { calcScheduleHealth, getRequiredCount } from '../utils/shiftCalc.js'
@@ -806,6 +807,7 @@ const shiftTypesStore = useShiftTypesStore()
 const requestStore = useRequestStore()
 const autoSchedule = useAutoSchedule(scheduleStore, settingsStore)
 const { holidays, fetchHolidays } = useHoliday()
+const { quotas } = useQuota(scheduleStore, settingsStore, holidays)
 
 const showTransferModal = ref(false)
 const transferTarget = ref('')
@@ -917,11 +919,24 @@ const health = computed(() => {
     ...d,
     dayType: getDayType(d.dateStr, holidays.value || [])
   }))
+  
+  // 取得所有內部定義的 ID (D, N, S1, H3 等)
+  const internalIds = new Set(shiftTypesStore.activeTypes.map(t => t.id))
+  
+  const allQuotas = Object.fromEntries(
+    Object.entries(quotas.value).map(([uid, q]) => [uid, {
+      D: q.D?.target ?? null,
+      N: q.N?.target ?? null,
+      Off: q.Off?.target ?? null,
+      W6Off: q.W6Off?.target ?? null
+    }])
+  )
   return calcScheduleHealth(
     scheduleStore.scheduleData,
-    scheduleStore.meta?.offQuota || {},
+    allQuotas,
     settingsStore.settings,
-    dayInfos
+    dayInfos,
+    internalIds
   )
 })
 
@@ -1438,6 +1453,7 @@ async function svCommit() {
       rotationRecord[st] = {
         order: order,
         startUserId: order[0] ?? null,
+        endUserId: extras > 0 ? (order[extras - 1] ?? null) : null,
         nextStartUserId: nextStartUserId, // Explicitly store who starts next month
         extras
       }
@@ -1696,7 +1712,7 @@ function svIsEnd(st, userId) {
 
 // extras = 0: the last chip completes the full cycle and wraps back to the start next month
 function svIsFullCycleEnd(st, userId) {
-  if (svGetExtras(st) !== 0 || svOffPreview.length === 0) return false
+  if (svGetExtras(st) !== 0 || svOffPreview.value.length === 0) return false
   const order = svGetDisplayOrder(st)
   return order.length > 1 && order[order.length - 1] === userId
 }

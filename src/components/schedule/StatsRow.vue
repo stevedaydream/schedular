@@ -18,7 +18,7 @@
     </td>
   </template>
 
-  <!-- Expand detail panel (teleported via slot or inline) -->
+  <!-- Expand detail panel -->
   <td v-if="expandedType" colspan="1" class="relative">
     <div class="absolute right-0 top-6 z-20 bg-white border border-gray-200 rounded shadow-lg p-3 min-w-[160px] text-xs text-gray-700">
       <div class="font-semibold mb-2">{{ expandedType }} 班明細</div>
@@ -35,6 +35,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { calcPersonStats } from '../../utils/shiftCalc.js'
+import { useShiftTypesStore } from '../../stores/shiftTypes.js'
 
 const props = defineProps({
   userId: { type: String, required: true },
@@ -44,12 +45,29 @@ const props = defineProps({
   dayInfos: { type: Array, default: () => [] }
 })
 
+const shiftTypesStore = useShiftTypesStore()
 const bumping = ref(null)
 const expandedType = ref(null)
 
 const displayTypes = ['D', 'N', 'Off', 'W6Off']
 
-const stats = computed(() => calcPersonStats(props.shifts, props.quota, props.dayInfos))
+/**
+ * 判定一個班別是否為「內部上班」
+ * 邏輯：D, N 永遠是內部；其他班別必須在任一天別有設定需求人數 > 0
+ */
+const internalIds = computed(() => {
+  const ids = new Set(['D', 'N'])
+  shiftTypesStore.activeTypes.forEach(t => {
+    if (t.id === 'Off' || t.id === 'W6Off') return
+    const hasQuota = Object.values(t.quota || {}).some(v => v !== null && v !== '' && Number(v) > 0)
+    if (hasQuota) {
+      ids.add(t.id)
+    }
+  })
+  return ids
+})
+
+const stats = computed(() => calcPersonStats(props.shifts, props.quota, props.dayInfos, internalIds.value))
 const byType = computed(() => stats.value.byType)
 
 // Watch for changes to trigger bump animation
@@ -67,11 +85,18 @@ watch(() => stats.value.actual, (newVal, oldVal) => {
 const expandDays = computed(() => {
   if (!expandedType.value) return []
   const type = expandedType.value
+  const ids = internalIds.value
   const satDays = new Set(props.dayInfos.filter(d => d.dayType === 'saturday').map(d => String(d.day)))
+  
   return Object.entries(props.shifts || {})
     .filter(([day, v]) => {
-      if (type === 'W6Off') return v === 'Off' && satDays.has(String(day))
-      return v === type
+      if (!v) return false
+      
+      const isInternal = ids.has(v)
+      const effectiveShift = (isInternal && v !== 'Off') ? v : 'Off'
+      
+      if (type === 'W6Off') return effectiveShift === 'Off' && satDays.has(String(day))
+      return effectiveShift === type
     })
     .map(([day, value]) => ({ day, value }))
     .sort((a, b) => parseInt(a.day) - parseInt(b.day))
