@@ -767,6 +767,32 @@
           </div>
         </div>
       </div>
+
+      <!-- System Settings -->
+      <div v-if="activeTab === 'system'">
+        <div class="card">
+          <h3 class="text-base font-semibold mb-1">系統設定</h3>
+          <p class="text-sm text-gray-500 mb-4">系統相關的外部資源與連結。</p>
+
+          <div class="border border-gray-200 rounded-lg p-4">
+            <h4 class="font-medium text-gray-800 mb-1">主資料試算表</h4>
+            <p class="text-xs text-gray-500 mb-3">
+              開啟後端 Google 試算表（班表、人員、設定等原始資料）。請謹慎修改，避免破壞系統資料結構。
+            </p>
+            <a
+              :href="SPREADSHEET_URL"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn-primary text-sm inline-flex items-center gap-2"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+              </svg>
+              開啟主試算表
+            </a>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 </template>
@@ -797,8 +823,12 @@ const tabs = [
   { id: 'shifts', label: '班別管理' },
   { id: 'rotation', label: '輪序管理' },
   { id: 'holidays', label: '國定假日' },
-  { id: 'backup', label: '備份匯出' }
+  { id: 'backup', label: '備份匯出' },
+  { id: 'system', label: '系統設定' }
 ]
+
+// 主資料試算表（Google Sheets）連結
+const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1SitOBsyKtBsHr_OAih2A1Ans_El6ns5IHlcoQwoVPy8/edit?gid=1884631028#gid=1884631028'
 
 // ── Shift Types ─────────────────────────────────────────────
 const shiftTypesStore = useShiftTypesStore()
