@@ -1,20 +1,19 @@
 @echo off
-chcp 65001 >nul
 
 :menu
 cls
 echo ==========================================
-echo       Google Apps Script (GAS) 部署工具
+echo       Google Apps Script (GAS) Deployer
 echo ==========================================
 echo.
-echo 目前工作目錄: %CD%
+echo Current Directory: %CD%
 echo.
-echo 請選擇部署環境：
-echo [1] 測試版 (Beta)
-echo [2] 正式版 (Production)
-echo [3] 結束離開
+echo Select deployment environment:
+echo [1] Beta (Testing)
+echo [2] Production
+echo [3] Exit
 echo.
-set /p choice="請輸入選項 [1-3]: "
+set /p choice="Enter choice [1-3]: "
 
 if "%choice%"=="1" goto deploy_beta
 if "%choice%"=="2" goto deploy_prod
@@ -23,7 +22,7 @@ goto invalid_choice
 
 :deploy_beta
 echo.
-echo 正在準備部署至【測試版】...
+echo Preparing deployment to [Beta]...
 cd /d "%~dp0gas"
 (
 echo {
@@ -31,32 +30,32 @@ echo   "scriptId": "1ZZH4HaFEEjYOqtS1X-FcD5r5pAGMBDDMrRO0aZI62-eSeFtV0QxlGNek",
 echo   "rootDir": "."
 echo }
 ) > .clasp.json
-echo .clasp.json 已更新為【測試版】。
+echo .clasp.json updated for [Beta].
 pause
 
-echo 正在執行 clasp push...
+echo Running clasp push...
 call clasp push
 if %errorlevel% neq 0 goto error
 echo.
-echo clasp push 完成！
+echo clasp push completed!
 pause
 
-echo 正在執行 clasp deploy...
+echo Running clasp deploy...
 call clasp deploy --deploymentId AKfycbyhepYA8SA-M2Ulil9itz3dOeKNoBxfPLPUSllt78UAujASG7UpQUPwm02ZbMJzXFKXtg
 if %errorlevel% neq 0 goto error
 echo.
-echo clasp deploy 完成！
+echo clasp deploy completed!
 pause
 
 echo.
-echo 測試版部署成功！
+echo Beta deployment successful!
 cd /d "%~dp0"
 pause
 goto menu
 
 :deploy_prod
 echo.
-echo 正在準備部署至【正式版】...
+echo Preparing deployment to [Production]...
 cd /d "%~dp0gas"
 (
 echo {
@@ -64,38 +63,38 @@ echo   "scriptId": "1EjTEwRUcs9rG0XpGHHM8C-NjhnyRNC8UtTf127HqIwtjZ_lU-vfAZWra",
 echo   "rootDir": "."
 echo }
 ) > .clasp.json
-echo .clasp.json 已更新為【正式版】。
+echo .clasp.json updated for [Production].
 pause
 
-echo 正在執行 clasp push...
+echo Running clasp push...
 call clasp push
 if %errorlevel% neq 0 goto error
 echo.
-echo clasp push 完成！
+echo clasp push completed!
 pause
 
-echo 正在執行 clasp deploy...
+echo Running clasp deploy...
 call clasp deploy --deploymentId AKfycbxkAXCtVguzGYAQtnBwnghnTklw4itP7sFEyITcRJpFvTcnmTG6XOKJElRlfPosf3CV
 if %errorlevel% neq 0 goto error
 echo.
-echo clasp deploy 完成！
+echo clasp deploy completed!
 pause
 
 echo.
-echo 正式版部署成功！
+echo Production deployment successful!
 cd /d "%~dp0"
 pause
 goto menu
 
 :invalid_choice
 echo.
-echo 無效的選項，請重新選擇。
+echo Invalid choice. Please try again.
 pause
 goto menu
 
 :error
 echo.
-echo 部署過程中出錯，請檢查上方錯誤訊息。
+echo An error occurred during deployment. Please check the messages above.
 cd /d "%~dp0"
 pause
 goto menu
@@ -103,5 +102,5 @@ goto menu
 :end
 cd /d "%~dp0"
 echo.
-echo 感謝使用，再見！
+echo Thank you for using! Goodbye.
 pause
