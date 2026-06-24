@@ -19,7 +19,14 @@
       "Bash(copy \"C:\\\\Users\\\\User\\\\OneDrive\\\\文件\\\\9A值班表\\(排班用、預班\\)-9A9B combind .xlsm\" \"G:\\\\project\\\\scheduler\\\\tools\\\\schedule_temp.xlsm\" 2>&1)",
       "Bash(cd \"G:/project/scheduler\" && npm install --save-dev sharp 2>&1 | tail -5)",
       "Bash(cd \"G:/project/scheduler\" && node -e \"require\\('sharp'\\); console.log\\('sharp ok'\\)\")",
-      "Bash(cd \"G:/project/scheduler\" && node scripts/generate-icons.js)"
+      "Bash(cd \"G:/project/scheduler\" && node scripts/generate-icons.js)",
+      "Bash(cd:*)",
+      "Bash(clasp deploy:*)",
+      "Bash(clasp push:*)",
+      "Bash(echo:*)",
+      "Bash(netlify status:*)",
+      "Bash(netlify sites:create)",
+      "Bash(netlify api:*)"
     ]
   }
 }

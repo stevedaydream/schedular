@@ -84,15 +84,21 @@ var Request = (function () {
       const allRows = sheetToObjects(sheet);
       const dayKey = `day_${day}`;
 
+      // 勿值類型不進行 overBook 計算
+      const CONSTRAINT_SHIFTS = ['NO_DN', 'NO_D', 'NO_N'];
+      const isConstraint = CONSTRAINT_SHIFTS.includes(shift);
+
       // Count how many people have requested this shift for this day
       let requestCount = 0;
-      allRows.forEach(row => {
-        if (row.userId !== userId && row[dayKey] === shift) requestCount++;
-      });
+      if (!isConstraint) {
+        allRows.forEach(row => {
+          if (row.userId !== userId && row[dayKey] === shift) requestCount++;
+        });
+      }
 
       // Get required count from settings
-      const required = getRequiredCountForDay(ss, yyyyMM, day, shift);
-      const isOverBooked = requestCount >= required;
+      const required = isConstraint ? 999 : getRequiredCountForDay(ss, yyyyMM, day, shift);
+      const isOverBooked = !isConstraint && requestCount >= required;
 
       // Get or create user row
       let rowIdx = findRowIndex(sheet, 'userId', userId);

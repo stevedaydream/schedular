@@ -100,10 +100,11 @@ export function useQuota(scheduleStore, settingsStore, holidaysRef) {
     const quota = perPersonQuota.value
 
     const meta = unwrap(scheduleStore.meta) || {}
-    const dQuota = meta?.dQuota?.[userId]
-    const nQuota = meta?.nQuota?.[userId]
-    const offQuota = meta?.offQuota?.[userId]
-    const w6offQuota = meta?.w6offQuota?.[userId]
+    const overrideData = meta?.quotaOverrides?.[userId] || {}
+    const dQuota = overrideData.D?.target ?? meta?.dQuota?.[userId]
+    const nQuota = overrideData.N?.target ?? meta?.nQuota?.[userId]
+    const offQuota = overrideData.Off?.target ?? meta?.offQuota?.[userId]
+    const w6offQuota = overrideData.W6Off?.target ?? meta?.w6offQuota?.[userId]
 
     // Calculate actual W6Off (含週六外援)
     const monthDays = getMonthDays(currentMonth)

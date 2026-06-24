@@ -114,7 +114,7 @@
                         </div>
                         <!-- 每日需求人數 -->
                         <div>
-                          <div class="text-xs text-gray-500 mb-1">每日需求人數（留空 = 不設需求）</div>
+                          <div class="text-xs text-gray-500 mb-1">每日需求人數（自動排班依此填補；留空 = 不設需求）</div>
                           <div class="flex gap-3">
                             <label
                               v-for="d in DAY_TYPE_OPTIONS"
@@ -577,6 +577,42 @@
                 </button>
               </div>
             </div>
+          </div>
+
+          <!-- Archive old months -->
+          <div class="border border-orange-200 bg-orange-50/30 rounded-lg p-4 mb-4">
+            <h4 class="font-medium text-gray-800 mb-1">封存舊月份</h4>
+            <p class="text-xs text-gray-500 mb-3">
+              將主試算表中 <strong>3 個月前</strong>的班表分頁（Schedule / ScheduleMeta / Requests）複製到封存試算表後刪除，
+              避免分頁數超過 Google Sheets 200 張上限。封存後可至 Drive 中的「<em>[試算表名稱]_Archive</em>」查閱歷史資料。
+            </p>
+            <div
+              v-if="archiveResult"
+              class="text-xs mb-3 p-2 rounded border"
+              :class="archiveResult.success ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-600'"
+            >
+              <template v-if="archiveResult.success">
+                <span v-if="archiveResult.data.archived === 0">✓ 無需封存（目前僅保有 3 個月以內的資料）</span>
+                <span v-else>
+                  ✓ 已封存 {{ archiveResult.data.archived }} 個月
+                  （{{ archiveResult.data.months.join('、') }}）
+                  至「{{ archiveResult.data.archiveName }}」
+                </span>
+              </template>
+              <template v-else>✗ {{ archiveResult.error }}</template>
+            </div>
+            <button
+              @click="runArchive"
+              :disabled="archiving"
+              class="btn-secondary text-sm flex items-center gap-2"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2L19 8"/>
+              </svg>
+              {{ archiving ? '封存中（請稍候）...' : '封存 3 個月前的資料' }}
+            </button>
+            <p class="text-xs text-gray-400 mt-2">⚠ 封存後舊月份從主試算表移除，無法在此系統直接查閱，請至 Drive 的封存試算表確認。</p>
           </div>
 
           <!-- Historical Import -->
@@ -1202,6 +1238,21 @@ const backupMonth = ref((() => {
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`
 })())
 const backupLoading = ref('')
+const archiving = ref(false)
+const archiveResult = ref(null)
+
+async function runArchive() {
+  if (!confirm('確認封存 3 個月前的班表至封存試算表？封存後舊月份將從主試算表移除。')) return
+  archiving.value = true
+  archiveResult.value = null
+  try {
+    archiveResult.value = await api.archiveOldMonths({ keepMonths: 3 })
+  } catch (e) {
+    archiveResult.value = { success: false, error: e.message }
+  } finally {
+    archiving.value = false
+  }
+}
 
 function downloadJSON(data, filename) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })

@@ -74,6 +74,11 @@ function doPost(e) {
       case 'batchRemoveUsers':  return respond(Auth.batchRemoveUsers(body));
       case 'saveHolidayDuty':   return respond(Schedule.saveHolidayDuty(body));
       case 'saveHolidays':      return respond(Schedule.saveHolidays(body));
+      case 'archiveOldMonths':  return respond(Schedule.archiveOldMonths(body));
+      case 'autoFillSchedule': return respond(AutoSchedule.autoFillSchedule(body));
+      case 'fixWarning':      return respond(AutoSchedule.fixWarning(body));
+      case 'fixAllWarnings': return respond(AutoSchedule.fixAllWarnings(body));
+      case 'rescanSchedule': return respond(AutoSchedule.rescanSchedule(body));
       default:                  return respond({ success: false, error: 'Unknown action: ' + action });
     }
   } catch (err) {

@@ -71,7 +71,12 @@
               <div class="text-sm font-medium text-gray-800">{{ authStore.user?.name }}</div>
               <div class="text-xs text-gray-400">{{ roleLabel(authStore.user?.role) }}</div>
             </div>
-            <button
+            <span
+              v-if="systemLabel"
+              class="hidden sm:inline-block text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 font-mono"
+              :title="'目前連線：' + systemLabel"
+            >{{ systemLabel }}</span>
+          <button
               @click="handleLogout"
               class="text-sm text-gray-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors"
             >
@@ -113,6 +118,8 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const notificationStore = useNotificationStore()
+
+const systemLabel = import.meta.env.VITE_SYSTEM_LABEL || ''
 
 function navLinkClass(path) {
   const active = route.path === path || route.path.startsWith(path + '/')

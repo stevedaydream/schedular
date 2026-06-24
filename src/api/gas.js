@@ -111,5 +111,11 @@ export const api = {
   saveHolidayDuty: (data) => gasPost('saveHolidayDuty', data),
   clearSchedule: (data) => gasPost('clearSchedule', data),
   saveHolidays: (data) => gasPost('saveHolidays', data),
-  saveAllRotationPools: (data) => gasPost('saveAllRotationPools', data)
+  saveAllRotationPools: (data) => gasPost('saveAllRotationPools', data),
+  saveScheduleMeta: (data) => gasPost('batchSaveShifts', { yyyyMM: data.yyyyMM, shifts: [], metaUpdates: data.metaUpdates }),
+  archiveOldMonths: (data) => gasPost('archiveOldMonths', data),
+  autoFillSchedule: (data) => gasPost('autoFillSchedule', data),
+  fixWarning: (data) => gasPost('fixWarning', data),
+  fixAllWarnings: (data) => gasPost('fixAllWarnings', data),
+  rescanSchedule: (data) => gasPost('rescanSchedule', data),
 }

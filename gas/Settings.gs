@@ -8,16 +8,15 @@ var Settings_ = (function () {
   var SETTINGS_SHEET = 'Settings';
 
   var DEFAULT_SETTINGS = {
-    wdAM: '3',
-    wdD: '1',
-    wdN: '1',
-    satAM: '3',
-    satD: '1',
-    satN: '1',
-    holD: '1',
-    holN: '1',
-    sunD: '1',
-    sunN: '1'
+    wdD: '1',    // 平日每天 D 人數需求
+    wdN: '1',    // 平日每天 N 人數需求
+    wdS1: '2',   // 平日每天 S1 人數需求（rescan 用）
+    holD: '1',   // 假日平日 D 人數需求
+    holN: '1',   // 假日平日 N 人數需求
+    sunD: '1',   // 週日 D 人數需求
+    sunN: '1',   // 週日 N 人數需求
+    satH3: '2',  // 週六 H3 人數需求
+    autoScheduleRules: ''
   };
 
   function getSettings() {

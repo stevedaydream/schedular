@@ -23,6 +23,7 @@
             :key="`hol-stat-${type}`"
             class="border border-gray-200 bg-gray-50"
           ></th>
+          <th class="border border-gray-200 bg-gray-50"></th>
         </tr>
         <tr>
           <th
@@ -49,6 +50,7 @@
           >
             {{ type }}
           </th>
+          <th class="border border-gray-200 bg-gray-50 min-w-[26px]" title="配額調整備註"></th>
         </tr>
       </thead>
 
@@ -116,6 +118,10 @@
             :quota="getUserQuota(user.userId)"
             :isSupport="user.isSupport === true || user.isSupport === 'true'"
             :dayInfos="monthDays"
+            :overrides="getQuotaOverrides(user.userId)"
+            :rotationQuota="perPersonQuota"
+            :isEditable="isEditable"
+            @update-override="(payload) => handleOverrideUpdate(user.userId, payload)"
           />
         </tr>
 
@@ -149,7 +155,7 @@
               </div>
             </div>
           </td>
-          <td colspan="4" class="border border-gray-200"></td>
+          <td colspan="5" class="border border-gray-200"></td>
         </tr>
       </tfoot>
     </table>
@@ -227,7 +233,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update-shift', 'reorder-users'])
+const emit = defineEmits(['update-shift', 'reorder-users', 'save-quota-override'])
 
 const monthDays = computed(() =>
   getMonthDays(props.currentMonth).map(d => ({
@@ -264,7 +270,7 @@ const settingsStoreAdapter = {
   settings: computed(() => props.settings)
 }
 
-const { quotas } = useQuota(scheduleStoreAdapter, settingsStoreAdapter, computed(() => props.holidays))
+const { quotas, perPersonQuota } = useQuota(scheduleStoreAdapter, settingsStoreAdapter, computed(() => props.holidays))
 const shiftTypesStore = useShiftTypesStore()
 
 function getShift(userId, day) {
@@ -285,7 +291,14 @@ function getRequestShift(userId, day) {
 
 function isDisputedRequest(userId, day) {
   const overBooked = props.requestData[userId]?.overBooked || []
-  return overBooked.includes(String(day)) || overBooked.includes(day)
+  if (overBooked.includes(String(day)) || overBooked.includes(day)) return true
+  const req = props.requestData[userId]?.[`day_${day}`]
+  const actual = props.scheduleData[userId]?.[`day_${day}`]
+  if (!req || !actual) return false
+  if (req === 'NO_DN') return actual === 'D' || actual === 'N'
+  if (req === 'NO_D')  return actual === 'D'
+  if (req === 'NO_N')  return actual === 'N'
+  return false
 }
 
 function getDayTypeForDate(dateStr) {
@@ -361,6 +374,19 @@ function getUserQuota(userId) {
   }
 }
 
+function getQuotaOverrides(userId) {
+  try {
+    const raw = props.meta?.quotaOverrides
+    if (!raw) return {}
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return parsed[userId] || {}
+  } catch { return {} }
+}
+
+function handleOverrideUpdate(userId, { type, target, note }) {
+  emit('save-quota-override', { userId, type, target, note })
+}
+
 function normalizeShifts(scheduleRow) {
   if (!scheduleRow) return {}
   const result = {}
@@ -371,7 +397,9 @@ function normalizeShifts(scheduleRow) {
 }
 
 function handleUpdate(userId, day, shift) {
-  emit('update-shift', { userId, day, shift })
+  const dayInfo = monthDays.value.find(d => d.day === day)
+  const normalized = (shift === 'Off' && dayInfo?.dayOfWeek === 6) ? 'W6Off' : shift
+  emit('update-shift', { userId, day, shift: normalized })
 }
 
 // ── Row hover highlight ──────────────────────────────────────

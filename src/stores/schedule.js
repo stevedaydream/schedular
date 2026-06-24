@@ -10,6 +10,7 @@ export const useScheduleStore = defineStore('schedule', () => {
   const scheduleData = ref({})   // { userId: { day_1: 'D', day_2: 'N', ... } }
   const currentMonth = ref(getCurrentYYYYMM())
   const isLocked = ref(false)
+  const isArchived = ref(false)  // true when month is read from archive spreadsheet
   const meta = ref({})           // { isLocked, lockedBy, cellNotes, offQuota }
   const loading = ref(false)
   const error = ref(null)
@@ -30,6 +31,7 @@ export const useScheduleStore = defineStore('schedule', () => {
       scheduleData.value = result.data.schedule || {}
       meta.value = result.data.meta || {}
       isLocked.value = meta.value.isLocked === true || meta.value.isLocked === 'true'
+      isArchived.value = result.data.isArchived === true
       fetchedAt.value = new Date()
     } catch (err) {
       error.value = err.message || '取得班表時發生錯誤'
@@ -167,6 +169,7 @@ export const useScheduleStore = defineStore('schedule', () => {
     scheduleData,
     currentMonth,
     isLocked,
+    isArchived,
     meta,
     loading,
     error,

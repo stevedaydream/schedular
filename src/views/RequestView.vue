@@ -9,9 +9,6 @@
           :minMonth="minRequestMonth"
           @change="onMonthChange"
         />
-        <div class="text-sm text-gray-500">
-          點擊格子循環選擇班別
-        </div>
       </div>
 
       <!-- Month info banner -->
@@ -38,11 +35,16 @@
       <!-- All users request grid (own row editable, others read-only) -->
       <div v-else class="card overflow-x-auto">
         <div class="flex items-center gap-4 mb-3 text-xs text-gray-500 flex-wrap">
+          <span class="flex items-center gap-1">
+            <span class="inline-block px-1 rounded font-mono font-bold bg-teal-100 text-teal-700">D</span>已排班表
+          </span>
+          <span class="flex items-center gap-1">
+            <span class="inline-block px-1 rounded font-mono font-bold bg-violet-100 text-violet-600">D</span>推算輪序
+          </span>
           <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-orange-100 border border-orange-300 rounded-sm"></span>爭議（超額預約）</span>
           <span class="flex items-center gap-1"><span class="inline-block px-1 rounded bg-red-100 text-red-800 font-medium">勿值</span>不排D或N</span>
           <span class="flex items-center gap-1"><span class="inline-block px-1 rounded bg-orange-100 text-orange-800 font-medium">勿D</span>不排D班</span>
           <span class="flex items-center gap-1"><span class="inline-block px-1 rounded bg-purple-100 text-purple-800 font-medium">勿N</span>不排N班</span>
-          <span>點擊格子選擇班別偏好</span>
         </div>
         <table class="text-xs border-collapse w-max min-w-full">
           <thead>
@@ -100,6 +102,7 @@
                   :isEditable="!scheduleStore.isLocked && (authStore.isScheduler || user.userId === authStore.user?.userId)"
                   :isOverBooked="isUserDayDisputed(user.userId, dayInfo.day)"
                   :requestShift="getRotationRef(user.userId, dayInfo.day)"
+                  :rotRefSource="getRotationSource(user.userId, dayInfo.day)"
                   :includeRequestOnly="true"
                   :suppressClick="isDragging"
                   :isInDragSelection="isDragSelected(user.userId, dayInfo.day)"
@@ -121,6 +124,46 @@
         :currentMonth="requestStore.currentMonth"
         @close="overBookModal.show = false"
       />
+
+      <!-- 單格衝突確認 -->
+      <div
+        v-if="conflictModal.show"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+        @click.self="conflictModal.show = false"
+      >
+        <div class="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
+          <div class="text-base font-semibold text-gray-800 mb-2">⚠️ 輪序衝突</div>
+          <p class="text-sm text-gray-600 mb-4">
+            第 <strong>{{ conflictModal.day }}</strong> 天的輪序已排
+            <strong class="text-blue-700">{{ conflictModal.rotRef }}</strong>，
+            您仍要預約
+            <strong class="text-orange-600">{{ conflictModal.shift }}</strong> 嗎？
+          </p>
+          <div class="flex justify-end gap-2">
+            <button class="px-4 py-1.5 text-sm rounded bg-gray-100 hover:bg-gray-200 text-gray-700" @click="conflictModal.show = false">取消</button>
+            <button class="px-4 py-1.5 text-sm rounded bg-orange-500 hover:bg-orange-600 text-white font-medium" @click="confirmConflictSave">確認覆蓋</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 批量拖曳衝突確認 -->
+      <div
+        v-if="dragConflictModal.show"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+        @click.self="dragConflictModal.show = false"
+      >
+        <div class="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
+          <div class="text-base font-semibold text-gray-800 mb-2">⚠️ 批量衝突</div>
+          <p class="text-sm text-gray-600 mb-4">
+            已選的 <strong>{{ dragConflictModal.cells.length }}</strong> 個格子中有輪序 D、N 或 H3，仍要覆蓋為
+            <strong class="text-orange-600">{{ dragConflictModal.shift }}</strong> 嗎？
+          </p>
+          <div class="flex justify-end gap-2">
+            <button class="px-4 py-1.5 text-sm rounded bg-gray-100 hover:bg-gray-200 text-gray-700" @click="dragConflictModal.show = false">取消</button>
+            <button class="px-4 py-1.5 text-sm rounded bg-orange-500 hover:bg-orange-600 text-white font-medium" @click="confirmDragConflictSave">確認覆蓋</button>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 
@@ -220,6 +263,13 @@ function getRotationRef(userId, day) {
     || null
 }
 
+// Returns where the rotRef comes from: 'schedule' (confirmed) or 'projected' (calculated)
+function getRotationSource(userId, day) {
+  if (scheduleStore.scheduleData[userId]?.[`day_${day}`]) return 'schedule'
+  if (projectedShifts.value[userId]?.[`day_${day}`]) return 'projected'
+  return null
+}
+
 async function loadProjection(yyyyMM) {
   projectedShifts.value = {}
   try {
@@ -239,12 +289,6 @@ async function loadProjection(yyyyMM) {
   } catch (_) { /* non-critical */ }
 }
 
-function hasWeekendSchedule() {
-  return Object.values(scheduleStore.scheduleData).some(shifts =>
-    Object.values(shifts).some(v => v === 'D' || v === 'N')
-  )
-}
-
 async function onMonthChange(yyyyMM) {
   if (yyyyMM < minRequestMonth) return
   await Promise.all([
@@ -253,16 +297,46 @@ async function onMonthChange(yyyyMM) {
   ])
   const year = parseInt(yyyyMM.slice(0, 4))
   await fetchHolidays(year)
-  if (!hasWeekendSchedule()) loadProjection(yyyyMM) // fire-and-forget
+  loadProjection(yyyyMM) // fire-and-forget — always load regardless of existing schedule
+}
+
+const conflictModal = ref({ show: false, userId: null, day: null, shift: null, rotRef: null })
+
+// Normalize Saturday "Off" → "W6Off" (request form uses "Off" for all rest)
+function normalizeShift(shift, day) {
+  if (shift === 'Off') {
+    const dayInfo = monthDays.value.find(d => d.day === day)
+    if (dayInfo && dayInfo.dayOfWeek === 6) return 'W6Off'
+  }
+  return shift
 }
 
 async function handleUpdateRequest(userId, day, shift) {
   if (!authStore.user) return
   if (!authStore.isScheduler && userId !== authStore.user.userId) return
+
+  const normalized = normalizeShift(shift, day)
+  const rotRef = getRotationRef(userId, day)
+  const isConflict = (rotRef === 'D' || rotRef === 'N' || rotRef === 'H3') && normalized && normalized !== rotRef
+  if (isConflict) {
+    conflictModal.value = { show: true, userId, day, shift: normalized, rotRef }
+    return
+  }
+
+  await doSaveRequest(userId, day, normalized)
+}
+
+async function doSaveRequest(userId, day, shift) {
   const result = await requestStore.saveRequest(userId, day, shift)
   if (result.overBooked) {
     overBookModal.value = { show: true, day, shift }
   }
+}
+
+async function confirmConflictSave() {
+  const { userId, day, shift } = conflictModal.value
+  conflictModal.value = { show: false, userId: null, day: null, shift: null, rotRef: null }
+  await doSaveRequest(userId, day, shift)
 }
 
 // ── Drag-to-select batch request ─────────────────────────────
@@ -331,11 +405,30 @@ async function applyDragShift(shift) {
   const cells = [...dragCells.value]
   dragCells.value = []
   showDragPicker.value = false
-  await Promise.all(
-    cells
-      .filter(({ userId }) => isCellEditable(userId))
-      .map(({ userId, day }) => requestStore.saveRequest(userId, day, shift))
-  )
+  const conflictCells = cells.filter(({ userId, day }) => {
+    if (!isCellEditable(userId)) return false
+    const normalized = normalizeShift(shift, day)
+    const rotRef = getRotationRef(userId, day)
+    return (rotRef === 'D' || rotRef === 'N' || rotRef === 'H3') && normalized && normalized !== rotRef
+  })
+  const cleanCells = cells.filter(({ userId, day }) => {
+    if (!isCellEditable(userId)) return false
+    const normalized = normalizeShift(shift, day)
+    const rotRef = getRotationRef(userId, day)
+    return !((rotRef === 'D' || rotRef === 'N' || rotRef === 'H3') && normalized && normalized !== rotRef)
+  })
+  await Promise.all(cleanCells.map(({ userId, day }) => requestStore.saveRequest(userId, day, normalizeShift(shift, day))))
+  if (conflictCells.length > 0) {
+    dragConflictModal.value = { show: true, cells: conflictCells, shift }
+  }
+}
+
+const dragConflictModal = ref({ show: false, cells: [], shift: null })
+
+async function confirmDragConflictSave() {
+  const { cells, shift } = dragConflictModal.value
+  dragConflictModal.value = { show: false, cells: [], shift: null }
+  await Promise.all(cells.map(({ userId, day }) => requestStore.saveRequest(userId, day, normalizeShift(shift, day))))
 }
 
 function cancelDrag() {
@@ -431,6 +524,6 @@ onMounted(async () => {
   ])
   const year = parseInt(yyyyMM.slice(0, 4))
   await fetchHolidays(year)
-  if (!hasWeekendSchedule()) loadProjection(yyyyMM) // fire-and-forget
+  loadProjection(yyyyMM) // fire-and-forget
 })
 </script>

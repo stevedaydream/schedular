@@ -45,14 +45,36 @@
       v-if="requestShift !== null && requestShift !== undefined"
       :class="[
         'absolute bottom-0 left-0 text-[9px] leading-none px-0.5 rounded-tr font-mono font-bold pointer-events-none',
-        requestShift === shift
-          ? 'bg-green-100 text-green-600'
-          : isDisputedRequest
-            ? 'bg-orange-100 text-orange-600'
-            : 'bg-blue-100 text-blue-600'
+        isConstraint
+          ? constraintViolated
+            ? 'bg-red-100 text-red-600'
+            : shift
+              ? 'bg-gray-100 text-gray-400'
+              : 'bg-amber-50 text-amber-500'
+          : requestShift === shift
+            ? 'bg-green-100 text-green-600'
+            : isDisputedRequest
+              ? 'bg-orange-100 text-orange-600'
+              : rotRefSource === 'schedule'
+                ? 'bg-teal-100 text-teal-700'
+                : rotRefSource === 'projected'
+                  ? 'bg-violet-100 text-violet-600'
+                  : 'bg-blue-100 text-blue-600'
       ]"
-      :title="requestShift === shift ? '預約已確認' : isDisputedRequest ? '爭議預約：' + requestShift : '預約：' + requestShift"
-    >{{ requestShift === shift ? '✓' : requestShift }}</span>
+      :title="isConstraint
+        ? constraintViolated
+          ? '違反勿值：已排' + shift
+          : CONSTRAINT_LABELS[requestShift]
+        : requestShift === shift
+          ? '預約已確認'
+          : isDisputedRequest
+            ? '爭議預約：' + requestShift
+            : rotRefSource === 'schedule'
+              ? '已排班表：' + requestShift
+              : rotRefSource === 'projected'
+                ? '推算輪序：' + requestShift
+                : '預約：' + requestShift"
+    >{{ isConstraint ? CONSTRAINT_LABELS[requestShift] : (requestShift === shift ? '✓' : requestShift) }}</span>
   </div>
 
   <!-- Radial picker — Teleport to body to avoid overflow clipping -->
@@ -107,6 +129,7 @@ const props = defineProps({
   dayCounts: { type: Object, default: null },
   dayRequired: { type: Object, default: null },
   requestShift: { type: String, default: null },
+  rotRefSource: { type: String, default: null }, // 'schedule' | 'projected'
   isDisputedRequest: { type: Boolean, default: false },
   includeRequestOnly: { type: Boolean, default: false }
 })
@@ -114,6 +137,19 @@ const props = defineProps({
 const emit = defineEmits(['update'])
 
 const shiftTypesStore = useShiftTypesStore()
+
+const CONSTRAINT_LABELS = { NO_DN: '勿值', NO_D: '勿D', NO_N: '勿N' }
+
+const isConstraint = computed(() => !!CONSTRAINT_LABELS[props.requestShift])
+
+// Returns true when the currently assigned shift violates the constraint
+const constraintViolated = computed(() => {
+  if (!isConstraint.value || !props.shift) return false
+  if (props.requestShift === 'NO_DN') return props.shift === 'D' || props.shift === 'N'
+  if (props.requestShift === 'NO_D')  return props.shift === 'D'
+  if (props.requestShift === 'NO_N')  return props.shift === 'N'
+  return false
+})
 const cellEl = ref(null)
 const hovered = ref(false)
 const pickerPos = ref({ x: 0, y: 0 })

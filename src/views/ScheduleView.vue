@@ -161,6 +161,26 @@
             </div>
           </div>
 
+          <!-- Auto fill -->
+          <div v-if="!scheduleStore.isLocked && !scheduleStore.isArchived" class="relative group">
+            <button
+              @click="handleAutoFill"
+              :disabled="scheduleStore.loading || autoFilling"
+              class="btn-secondary text-sm flex items-center gap-1.5"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+              {{ autoFilling ? '計算中...' : '自動填入' }}
+            </button>
+            <div class="tooltip-box w-64">
+              <p class="font-semibold mb-1">⚡ 自動填入</p>
+              <p>依配額與規則自動填入剩餘空格。</p>
+              <p class="mt-1 text-gray-300">填入前會顯示預覽，確認後才寫入。</p>
+              <p class="mt-1 text-yellow-300">⚠ 請先完成六日輪序、假日、預約班別。</p>
+            </div>
+          </div>
+
           <!-- Export CSV -->
           <button
             @click="exportCSV"
@@ -521,6 +541,15 @@
         {{ scheduleStore.error || autoSchedule.error.value }}
       </div>
 
+      <!-- Archive banner -->
+      <div
+        v-if="scheduleStore.isArchived"
+        class="mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700 flex items-center gap-2 print:hidden"
+      >
+        <span>📦</span>
+        <span>封存資料（唯讀）— 此月份已封存至備份試算表，無法編輯</span>
+      </div>
+
       <!-- Loading -->
       <div v-if="scheduleStore.loading" class="text-center py-12 text-gray-500">
         載入班表中...
@@ -535,10 +564,11 @@
         :settings="settingsStore.settings"
         :currentMonth="scheduleStore.currentMonth"
         :meta="scheduleStore.meta"
-        :isEditable="!scheduleStore.isLocked"
+        :isEditable="!scheduleStore.isLocked && !scheduleStore.isArchived"
         :requestData="showRequestOverlay ? requestStore.requestData : {}"
         @update-shift="handleUpdateShift"
         @reorder-users="handleReorderUsers"
+        @save-quota-override="handleSaveQuotaOverride"
       />
 
       <!-- Request comparison panel -->
@@ -596,16 +626,24 @@
                     v-if="getReqShift(user.userId, dayInfo.day)"
                     :class="[
                       'text-xs font-medium text-center py-1 px-0.5 min-h-[28px] flex items-center justify-center',
-                      isReqDisputed(user.userId, dayInfo.day)
-                        ? 'bg-orange-50 text-orange-700 ring-1 ring-orange-300 ring-inset'
-                        : getReqShift(user.userId, dayInfo.day) === scheduleStore.scheduleData[user.userId]?.['day_' + dayInfo.day]
-                          ? 'bg-green-50 text-green-700'
-                          : 'bg-blue-50 text-blue-700'
+                      isConstraintShift(getReqShift(user.userId, dayInfo.day))
+                        ? isReqDisputed(user.userId, dayInfo.day)
+                          ? 'bg-red-50 text-red-700 ring-1 ring-red-300 ring-inset'
+                          : 'bg-amber-50 text-amber-700'
+                        : isReqDisputed(user.userId, dayInfo.day)
+                          ? 'bg-orange-50 text-orange-700 ring-1 ring-orange-300 ring-inset'
+                          : getReqShift(user.userId, dayInfo.day) === scheduleStore.scheduleData[user.userId]?.['day_' + dayInfo.day]
+                            ? 'bg-green-50 text-green-700'
+                            : 'bg-blue-50 text-blue-700'
                     ]"
-                    :title="isReqDisputed(user.userId, dayInfo.day) ? '爭議：同一班別預約人數超額' : ''"
+                    :title="isConstraintShift(getReqShift(user.userId, dayInfo.day))
+                      ? isReqDisputed(user.userId, dayInfo.day)
+                        ? '違反勿值：已排' + scheduleStore.scheduleData[user.userId]?.['day_' + dayInfo.day]
+                        : constraintLabel(getReqShift(user.userId, dayInfo.day))
+                      : isReqDisputed(user.userId, dayInfo.day) ? '爭議：同一班別預約人數超額' : ''"
                   >
-                    {{ getReqShift(user.userId, dayInfo.day) }}
-                    <span v-if="isReqDisputed(user.userId, dayInfo.day)" class="ml-0.5 text-orange-500">!</span>
+                    {{ constraintLabel(getReqShift(user.userId, dayInfo.day)) }}
+                    <span v-if="isReqDisputed(user.userId, dayInfo.day)" class="ml-0.5">!</span>
                   </div>
                   <div v-else class="min-h-[28px]"></div>
                 </td>
@@ -779,6 +817,132 @@
       </div>
     </div>
 
+    <!-- Auto Fill Preview Modal -->
+    <div v-if="showAutoPreview" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+        <div class="p-4 border-b flex items-center justify-between">
+          <div>
+            <h3 class="text-lg font-semibold">自動填入預覽</h3>
+            <p class="text-sm text-gray-500">點擊格子可手動調整班別。確認後才會寫入班表。</p>
+          </div>
+          <div class="flex items-center gap-2 text-xs text-gray-500">
+            <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">自動填入</span>
+            <span class="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">手動修改</span>
+            <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">已鎖定</span>
+          </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+          <!-- Warnings -->
+          <div v-if="autoWarnings.length" class="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <div class="flex items-center justify-between mb-2">
+              <p class="text-sm font-medium text-amber-700">⚠ 排班警告（{{ autoWarnings.length }} 則）</p>
+              <div class="flex gap-2">
+                <button
+                  v-if="autoWarnings.some(w => isFixableWarning(w))"
+                  @click="handleFixAllWarnings"
+                  :disabled="fixingAll"
+                  class="text-xs px-3 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50"
+                >{{ fixingAll ? '修正中...' : '一鍵修正全部' }}</button>
+                <button
+                  @click="handleRescan"
+                  :disabled="rescanning"
+                  class="text-xs px-3 py-1 rounded bg-sky-500 hover:bg-sky-600 text-white disabled:opacity-50"
+                >{{ rescanning ? '掃描中...' : '重新掃描配額' }}</button>
+              </div>
+            </div>
+            <ul class="text-xs text-amber-600 space-y-1 max-h-40 overflow-y-auto">
+              <li v-for="(w, wi) in autoWarnings" :key="wi" class="flex items-center justify-between gap-2">
+                <span>{{ w.message || w }}</span>
+                <button
+                  v-if="isFixableWarning(w)"
+                  @click="handleFixWarning(w, wi)"
+                  :disabled="fixingWarningIdx === wi"
+                  class="shrink-0 text-xs px-2 py-0.5 rounded bg-amber-200 hover:bg-amber-300 text-amber-800 disabled:opacity-50"
+                >{{ fixingWarningIdx === wi ? '...' : '修正' }}</button>
+              </li>
+            </ul>
+          </div>
+          <div v-else class="flex items-center gap-2">
+            <span class="text-sm text-green-600">✓ 無異常警告</span>
+            <button
+              @click="handleRescan"
+              :disabled="rescanning"
+              class="text-xs px-3 py-1 rounded bg-sky-500 hover:bg-sky-600 text-white disabled:opacity-50"
+            >{{ rescanning ? '掃描中...' : '重新掃描配額' }}</button>
+          </div>
+
+          <!-- Preview grid -->
+          <div class="overflow-x-auto border rounded-lg">
+            <table class="text-xs border-collapse w-max">
+              <thead>
+                <tr class="bg-gray-50">
+                  <th class="sticky left-0 z-10 bg-gray-50 px-2 py-1 text-left font-medium text-gray-600 border-b border-r min-w-[4rem]">姓名</th>
+                  <th v-for="d in getMonthDays(scheduleStore.currentMonth)" :key="d.day"
+                    class="px-0.5 py-1 text-center font-normal text-gray-500 border-b w-8"
+                    :class="{ 'text-blue-500': d.dayOfWeek === 6, 'text-red-400': d.dayOfWeek === 0 }"
+                  >{{ d.day }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="u in settingsStore.schedulingUsers" :key="u.userId" class="hover:bg-gray-50">
+                  <td class="sticky left-0 z-10 bg-white px-2 py-0.5 font-medium text-gray-700 border-r whitespace-nowrap">{{ u.code || u.name }}</td>
+                  <td v-for="d in getMonthDays(scheduleStore.currentMonth)" :key="d.day" class="px-0.5 py-0.5 text-center">
+                    <button
+                      @click="handlePreviewCellClick(u.userId, d.day)"
+                      class="w-7 h-5 rounded text-xs font-mono leading-none transition-colors"
+                      :class="{
+                        'bg-orange-100 text-orange-700 hover:bg-orange-200 cursor-pointer': previewCellLayer(u.userId, d.day) === 'manual',
+                        'bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer': previewCellLayer(u.userId, d.day) === 'auto',
+                        'bg-gray-100 text-gray-500 cursor-default': previewCellLayer(u.userId, d.day) === 'locked',
+                        'text-gray-300 hover:bg-gray-50 cursor-pointer': previewCellLayer(u.userId, d.day) === 'empty',
+                      }"
+                      :title="previewCellLayer(u.userId, d.day) === 'locked' ? '已鎖定（原班表）' : '點擊切換班別'"
+                    >{{ previewCellValue(u.userId, d.day) || '·' }}</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Per-user summary -->
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div
+              v-for="u in settingsStore.schedulingUsers"
+              :key="u.userId"
+              class="flex items-center gap-2 px-2 py-1.5 bg-gray-50 rounded text-xs"
+            >
+              <span class="font-medium w-16 truncate">{{ u.code || u.name }}</span>
+              <template v-for="(cnt, shift) in autoPreviewSummary[u.userId]" :key="shift">
+                <span class="px-1 py-0.5 rounded font-mono"
+                  :class="{
+                    'bg-blue-100 text-blue-700': shift === 'D',
+                    'bg-indigo-100 text-indigo-700': shift === 'N',
+                    'bg-gray-100 text-gray-500': shift === 'Off' || shift === 'W6Off',
+                    'bg-purple-100 text-purple-700': shift === 'S1',
+                    'bg-orange-100 text-orange-700': shift === 'H3',
+                  }"
+                >{{ shift }}×{{ cnt }}</span>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-4 border-t flex gap-2 justify-between items-center">
+          <span v-if="manualOverrideCount > 0" class="text-xs text-orange-600">
+            已手動修改 {{ manualOverrideCount }} 格（確認後自動記錄為排班調整）
+          </span>
+          <span v-else class="text-xs text-gray-400"></span>
+          <div class="flex gap-2">
+            <button @click="cancelAutoPreview" class="btn-secondary">取消</button>
+            <button @click="confirmAutoFill" :disabled="confirmingAutoFill" class="btn-primary">
+              {{ confirmingAutoFill ? '寫入中...' : '確認填入' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -850,6 +1014,19 @@ const fetchedAgo = computed(() => {
   return `${mins} 分鐘前`
 })
 
+const CONSTRAINT_SHIFTS = ['NO_DN', 'NO_D', 'NO_N']
+const CONSTRAINT_LABELS = { NO_DN: '勿值', NO_D: '勿D', NO_N: '勿N' }
+
+function isConstraintShift(shift) { return CONSTRAINT_SHIFTS.includes(shift) }
+function constraintLabel(shift) { return CONSTRAINT_LABELS[shift] || shift }
+function isConstraintViolated(req, actual) {
+  if (!actual) return false
+  if (req === 'NO_DN') return actual === 'D' || actual === 'N'
+  if (req === 'NO_D')  return actual === 'D'
+  if (req === 'NO_N')  return actual === 'N'
+  return false
+}
+
 // All non-disputed requests (ready to be bulk-confirmed)
 const pendingRequests = computed(() => {
   const shifts = []
@@ -859,6 +1036,7 @@ const pendingRequests = computed(() => {
     const overBooked = userReqs.overBooked || []
     Object.entries(userReqs).forEach(([key, val]) => {
       if (!key.startsWith('day_') || !val) return
+      if (isConstraintShift(val)) return  // 勿值不寫入班表
       const day = parseInt(key.slice(4))
       if (overBooked.includes(String(day)) || overBooked.includes(day)) return
       shifts.push({ userId: user.userId, day, shift: val })
@@ -1152,6 +1330,30 @@ async function handleUpdateShift({ userId, day, shift }) {
   await scheduleStore.saveShift(userId, day, shift)
 }
 
+async function handleSaveQuotaOverride({ userId, type, target, note }) {
+  const yyyyMM = scheduleStore.currentMonth
+  const current = (() => {
+    try {
+      const raw = scheduleStore.meta?.quotaOverrides
+      return raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {}
+    } catch { return {} }
+  })()
+
+  const updated = { ...current }
+  if (target === null) {
+    if (updated[userId]) {
+      delete updated[userId][type]
+      if (Object.keys(updated[userId]).length === 0) delete updated[userId]
+    }
+  } else {
+    if (!updated[userId]) updated[userId] = {}
+    updated[userId][type] = { target, note: note || '' }
+  }
+
+  await api.saveScheduleMeta({ yyyyMM, metaUpdates: { quotaOverrides: updated } })
+  await scheduleStore.fetchSchedule(yyyyMM)
+}
+
 function handleReorderUsers(updates) {
   // Optimistically update local state
   updates.forEach(({ userId, sortOrder }) => {
@@ -1173,12 +1375,18 @@ function exportCSV() {
   const days = getMonthDays(yyyyMM)
   const activeUsers = [...settingsStore.schedulingUsers]
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-  // Header row: 姓名, 1, 2, 3, ..., 31
   const header = ['姓名', ...days.map(d => d.day)].join(',')
-  const rows = activeUsers.map(u => {
+  const rows = []
+  activeUsers.forEach(u => {
     const name = (u.name || u.userId).replace(/,/g, '，')
+    // Row 1: actual schedule
     const cells = days.map(({ day }) => scheduleStore.scheduleData[u.userId]?.[`day_${day}`] || '')
-    return [name, ...cells].join(',')
+    rows.push([name, ...cells].join(','))
+    // Row 2: original requests (勿值/預假), only if any exist
+    const reqs = days.map(({ day }) => requestStore.requestData[u.userId]?.[`day_${day}`] || '')
+    if (reqs.some(v => v)) {
+      rows.push([name + '(預)', ...reqs].join(','))
+    }
   })
   const csv = '\uFEFF' + [header, ...rows].join('\r\n')
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -1269,7 +1477,10 @@ function getReqShift(userId, day) {
 }
 function isReqDisputed(userId, day) {
   const ob = requestStore.requestData[userId]?.overBooked || []
-  return ob.includes(String(day)) || ob.includes(day)
+  if (ob.includes(String(day)) || ob.includes(day)) return true
+  const req = requestStore.requestData[userId]?.[`day_${day}`]
+  const actual = scheduleStore.scheduleData[userId]?.[`day_${day}`]
+  return isConstraintViolated(req, actual)
 }
 
 async function handleConfirmRequests() {
@@ -1287,6 +1498,229 @@ async function handleConfirmRequests() {
   } finally {
     confirmingRequests.value = false
   }
+}
+
+// ── 自動填入 ──────────────────────────────────────────────────
+const autoFilling = ref(false)
+const showAutoPreview = ref(false)
+const autoPreviewData = ref({})   // { userId: { 'day_1': 'D', ... } }
+const autoWarnings = ref([])
+const fixingWarningIdx = ref(null)
+const fixingAll = ref(false)
+const rescanning = ref(false)
+const manualOverrides = ref({})   // { userId: { 'day_N': shift } } — scheduler's manual edits
+const confirmingAutoFill = ref(false)
+
+const autoPreviewSummary = computed(() => {
+  const summary = {}
+  Object.entries(autoPreviewData.value).forEach(([uid, days]) => {
+    const counts = {}
+    Object.values(days).forEach(shift => {
+      if (shift) counts[shift] = (counts[shift] || 0) + 1
+    })
+    if (Object.keys(counts).length > 0) summary[uid] = counts
+  })
+  return summary
+})
+
+// Merged preview = autoPreviewData + manualOverrides (manual takes precedence)
+const mergedPreview = computed(() => {
+  const result = {}
+  const allUids = new Set([
+    ...Object.keys(autoPreviewData.value),
+    ...Object.keys(manualOverrides.value)
+  ])
+  allUids.forEach(uid => {
+    result[uid] = { ...(autoPreviewData.value[uid] || {}), ...(manualOverrides.value[uid] || {}) }
+  })
+  return result
+})
+
+function previewCellValue(uid, day) {
+  return manualOverrides.value[uid]?.['day_' + day]
+    ?? autoPreviewData.value[uid]?.['day_' + day]
+    ?? scheduleStore.scheduleData[uid]?.['day_' + day]
+    ?? ''
+}
+
+function previewCellLayer(uid, day) {
+  if (manualOverrides.value[uid]?.['day_' + day]) return 'manual'
+  if (autoPreviewData.value[uid]?.['day_' + day]) return 'auto'
+  if (scheduleStore.scheduleData[uid]?.['day_' + day]) return 'locked'
+  return 'empty'
+}
+
+const manualOverrideCount = computed(() =>
+  Object.values(manualOverrides.value).reduce((s, d) => s + Object.keys(d).length, 0)
+)
+
+async function handleAutoFill() {
+  autoFilling.value = true
+  try {
+    const result = await api.autoFillSchedule({ yyyyMM: scheduleStore.currentMonth })
+    if (!result.success) {
+      scheduleStore.error = result.error || '自動填入失敗'
+      return
+    }
+    autoPreviewData.value = result.data.preview || {}
+    autoWarnings.value = result.data.warnings || []
+    showAutoPreview.value = true
+  } catch (err) {
+    scheduleStore.error = err.message || '自動填入時發生錯誤'
+  } finally {
+    autoFilling.value = false
+  }
+}
+
+async function confirmAutoFill() {
+  confirmingAutoFill.value = true
+  try {
+    const shifts = []
+    Object.entries(mergedPreview.value).forEach(([userId, days]) => {
+      Object.entries(days).forEach(([key, shift]) => {
+        const day = parseInt(key.replace('day_', ''))
+        if (shift && day) shifts.push({ userId, day, shift })
+      })
+    })
+    const ok = await scheduleStore.batchSaveShifts({ shifts })
+    if (ok) {
+      // Save scheduler adjustments to ScheduleMeta for future auto-fill runs
+      const adjToSave = {}
+      Object.entries(manualOverrides.value).forEach(([uid, days]) => {
+        if (Object.keys(days).length) adjToSave[uid] = days
+      })
+      if (Object.keys(adjToSave).length) {
+        await api.saveScheduleMeta({
+          yyyyMM: scheduleStore.currentMonth,
+          metaUpdates: { schedulerAdjustments: JSON.stringify(adjToSave) }
+        })
+      }
+      showAutoPreview.value = false
+      autoPreviewData.value = {}
+      autoWarnings.value = []
+      manualOverrides.value = {}
+    }
+  } finally {
+    confirmingAutoFill.value = false
+  }
+}
+
+const FIXABLE_TYPES = ['NOffDFail', 'DShortage', 'H3Shortage', 'S1Shortage', 'S1Excess', 'WuZhiViolation', 'NShortage', 'QuotaDRebalance', 'QuotaOffToS1']
+function isFixableWarning(w) {
+  return w && FIXABLE_TYPES.includes(w.type)
+}
+
+async function handleFixWarning(w, wi) {
+  fixingWarningIdx.value = wi
+  try {
+    const result = await api.fixWarning({
+      yyyyMM: scheduleStore.currentMonth,
+      warning: w,
+      preview: autoPreviewData.value
+    })
+    if (!result.success) {
+      scheduleStore.error = result.error || '修正失敗'
+      return
+    }
+    // Apply changes into preview
+    const changes = result.data.changes || {}
+    Object.entries(changes).forEach(([uid, days]) => {
+      if (!autoPreviewData.value[uid]) autoPreviewData.value[uid] = {}
+      Object.assign(autoPreviewData.value[uid], days)
+    })
+    // Remove resolved warning
+    autoWarnings.value.splice(wi, 1)
+  } catch (err) {
+    scheduleStore.error = err.message || '修正時發生錯誤'
+  } finally {
+    fixingWarningIdx.value = null
+  }
+}
+
+async function handleFixAllWarnings() {
+  const fixable = autoWarnings.value.filter(w => isFixableWarning(w))
+  if (!fixable.length) return
+  fixingAll.value = true
+  try {
+    const result = await api.fixAllWarnings({
+      yyyyMM: scheduleStore.currentMonth,
+      warnings: fixable,
+      preview: mergedPreview.value
+    })
+    if (!result.success) { scheduleStore.error = result.error || '批次修正失敗'; return }
+    const changes = result.data.changes || {}
+    Object.entries(changes).forEach(([uid, days]) => {
+      if (!autoPreviewData.value[uid]) autoPreviewData.value[uid] = {}
+      Object.assign(autoPreviewData.value[uid], days)
+    })
+    // Replace warnings with only what remains unfixed
+    const remaining = result.data.remainingWarnings || []
+    const nonFixable = autoWarnings.value.filter(w => !isFixableWarning(w))
+    autoWarnings.value = [...nonFixable, ...remaining]
+  } catch (err) {
+    scheduleStore.error = err.message || '批次修正時發生錯誤'
+  } finally {
+    fixingAll.value = false
+  }
+}
+
+async function handleRescan() {
+  rescanning.value = true
+  try {
+    const result = await api.rescanSchedule({
+      yyyyMM: scheduleStore.currentMonth,
+      preview: autoPreviewData.value,
+      manualOverrides: manualOverrides.value
+    })
+    if (!result.success) { scheduleStore.error = result.error || '掃描失敗'; return }
+    const newWarnings = result.data.warnings || []
+    // Append only new warnings (avoid duplicates by type+day+userId)
+    newWarnings.forEach(w => {
+      const exists = autoWarnings.value.some(e =>
+        e.type === w.type && e.day === w.day && e.userId === w.userId
+      )
+      if (!exists) autoWarnings.value.push(w)
+    })
+  } catch (err) {
+    scheduleStore.error = err.message || '重新掃描時發生錯誤'
+  } finally {
+    rescanning.value = false
+  }
+}
+
+function handlePreviewCellClick(uid, day) {
+  // Don't allow editing locked (Sheets) cells
+  if (scheduleStore.scheduleData[uid]?.['day_' + day] &&
+      !autoPreviewData.value[uid]?.['day_' + day] &&
+      !manualOverrides.value[uid]?.['day_' + day]) return
+
+  const dayInfo = getMonthDays(scheduleStore.currentMonth).find(d => d.day === day)
+  const isSat = dayInfo?.dayOfWeek === 6
+  const isSun = dayInfo?.dayOfWeek === 0
+  const isHol = holidays.value?.some(h => h.dateStr === dayInfo?.dateStr && h.isHoliday)
+  let validShifts
+  if (isSat) validShifts = ['H3', 'W6Off', '']
+  else if (isSun || isHol) validShifts = ['D', 'N', 'Off', '']
+  else validShifts = ['D', 'N', 'S1', 'Off', '']
+
+  const current = manualOverrides.value[uid]?.['day_' + day]
+    ?? autoPreviewData.value[uid]?.['day_' + day]
+    ?? scheduleStore.scheduleData[uid]?.['day_' + day]
+    ?? ''
+  const idx = validShifts.indexOf(current)
+  const next = validShifts[(idx + 1) % validShifts.length]
+
+  if (!manualOverrides.value[uid]) manualOverrides.value[uid] = {}
+  if (next === '') {
+    delete manualOverrides.value[uid]['day_' + day]
+  } else {
+    manualOverrides.value[uid]['day_' + day] = next
+  }
+}
+
+function cancelAutoPreview() {
+  showAutoPreview.value = false
+  manualOverrides.value = {}
 }
 
 async function handleTransfer() {

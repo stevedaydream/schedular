@@ -19,8 +19,28 @@ var Schedule = (function () {
     if (!yyyyMM) return { success: false, error: '缺少 yyyyMM 參數' };
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const scheduleSheet = ss.getSheetByName(getSheetName(yyyyMM));
-    const metaSheet = ss.getSheetByName(getMetaSheetName(yyyyMM));
+    var scheduleSheet = ss.getSheetByName(getSheetName(yyyyMM));
+    var metaSheet = ss.getSheetByName(getMetaSheetName(yyyyMM));
+    var isArchived = false;
+
+    // 若主試算表找不到該月份，嘗試從封存試算表讀取
+    if (!scheduleSheet && !metaSheet) {
+      var archiveId = getConfig(ss, 'archiveSpreadsheetId');
+      if (archiveId) {
+        try {
+          var archiveSS = SpreadsheetApp.openById(archiveId);
+          var archiveScheduleSheet = archiveSS.getSheetByName(getSheetName(yyyyMM));
+          var archiveMetaSheet = archiveSS.getSheetByName(getMetaSheetName(yyyyMM));
+          if (archiveScheduleSheet || archiveMetaSheet) {
+            scheduleSheet = archiveScheduleSheet;
+            metaSheet = archiveMetaSheet;
+            isArchived = true;
+          }
+        } catch (e) {
+          // 封存試算表無法存取，不影響正常回傳
+        }
+      }
+    }
 
     const schedule = {};
     if (scheduleSheet) {
@@ -45,7 +65,7 @@ var Schedule = (function () {
         meta[row.key] = row.value;
       });
       // Parse JSON fields
-      ['cellNotes', 'dQuota', 'nQuota', 'offQuota', 'w6offQuota', 'rotationRecord'].forEach(function(key) {
+      ['cellNotes', 'dQuota', 'nQuota', 'offQuota', 'w6offQuota', 'rotationRecord', 'quotaOverrides', 'schedulerAdjustments'].forEach(function(key) {
         if (meta[key] && typeof meta[key] === 'string') {
           try { meta[key] = JSON.parse(meta[key]); } catch (e) { meta[key] = {}; }
         }
@@ -53,7 +73,7 @@ var Schedule = (function () {
       meta.isLocked = meta.isLocked === 'true' || meta.isLocked === true;
     }
 
-    return { success: true, data: { schedule, meta } };
+    return { success: true, data: { schedule, meta, isArchived: isArchived } };
   }
 
   // ─── Write ─────────────────────────────────────────────────────────────────
@@ -208,6 +228,7 @@ var Schedule = (function () {
       // Reset meta
       setMeta(ss, yyyyMM, 'cellNotes', '{}');
       setMeta(ss, yyyyMM, 'offQuota', '{}');
+      setMeta(ss, yyyyMM, 'quotaOverrides', '{}');
       setMeta(ss, yyyyMM, 'weekendFilled', 'false');
 
       return { success: true };
@@ -448,6 +469,26 @@ var Schedule = (function () {
     }
   }
 
+  function getConfig(ss, key) {
+    var sheet = ss.getSheetByName('Config');
+    if (!sheet) return null;
+    var data = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === key) return data[i][1] ? String(data[i][1]) : null;
+    }
+    return null;
+  }
+
+  function setConfig(ss, key, value) {
+    var sheet = getOrCreateSheet(ss, 'Config', ['key', 'value']);
+    var rowIdx = findRowIndex(sheet, 'key', key);
+    if (rowIdx !== -1) {
+      sheet.getRange(rowIdx, 2).setValue(value);
+    } else {
+      sheet.appendRow([key, value]);
+    }
+  }
+
   // ─── Rotation Record Lookup ────────────────────────────────────────────────
 
   function getRecentRotationRecord(params) {
@@ -519,6 +560,111 @@ var Schedule = (function () {
     return { success: true, data: { foundMonth: foundMonth, projectedMonth: targetYYYYMM, record: projected } };
   }
 
+  // ─── Archive ───────────────────────────────────────────────────────────────
+
+  function archiveOldMonths(body) {
+    var userRole = body._user && body._user.role;
+    if (userRole !== 'superadmin') {
+      return { success: false, error: '僅管理員可執行封存' };
+    }
+
+    var keepMonths = parseInt(body.keepMonths) || 3;
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // 從分頁名稱收集所有 YYYYMM
+    var monthPattern = /^(?:Schedule|ScheduleMeta|Requests)_(\d{6})$/;
+    var monthsSet = {};
+    ss.getSheets().forEach(function(sheet) {
+      var m = sheet.getName().match(monthPattern);
+      if (m) monthsSet[m[1]] = true;
+    });
+
+    // 以本月為基準，往前保留 keepMonths 個月，未來月份一律不動
+    var now = new Date();
+    var currentYYYYMM = Utilities.formatDate(now, 'Asia/Taipei', 'yyyyMM');
+    var cy = parseInt(currentYYYYMM.slice(0, 4));
+    var cm = parseInt(currentYYYYMM.slice(4, 6));
+
+    // 計算最舊保留月份（含）
+    var cutoffM = cm - keepMonths + 1;
+    var cutoffY = cy;
+    while (cutoffM <= 0) { cutoffM += 12; cutoffY -= 1; }
+    var cutoffYYYYMM = String(cutoffY) + String(cutoffM).padStart(2, '0');
+
+    // 封存：早於 cutoffYYYYMM 的月份；未來月份（> currentYYYYMM）不動
+    var allMonths = Object.keys(monthsSet).sort();
+    var toArchive = allMonths.filter(function(m) { return m < cutoffYYYYMM; });
+
+    if (toArchive.length === 0) {
+      return { success: true, data: { archived: 0, months: [], message: '無需封存' } };
+    }
+
+    // 取得或建立封存試算表（放在相同 Drive 資料夾）
+    var archiveName = ss.getName() + '_Archive';
+    var ssFile = DriveApp.getFileById(ss.getId());
+    var parents = ssFile.getParents();
+    var folder = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
+
+    var archiveSS;
+    var existingFiles = folder.getFilesByName(archiveName);
+    if (existingFiles.hasNext()) {
+      archiveSS = SpreadsheetApp.open(existingFiles.next());
+    } else {
+      archiveSS = SpreadsheetApp.create(archiveName);
+      var newFile = DriveApp.getFileById(archiveSS.getId());
+      folder.addFile(newFile);
+      DriveApp.getRootFolder().removeFile(newFile);
+    }
+
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    var archivedMonths = [];
+
+    try {
+      toArchive.forEach(function(yyyyMM) {
+        ['Schedule', 'ScheduleMeta', 'Requests'].forEach(function(prefix) {
+          var sheetName = prefix + '_' + yyyyMM;
+          var sheet = ss.getSheetByName(sheetName);
+          if (!sheet) return;
+
+          // 若封存表已有同名分頁先刪除（確保重跑冪等）
+          var existing = archiveSS.getSheetByName(sheetName);
+          if (existing) archiveSS.deleteSheet(existing);
+
+          // 複製到封存試算表並改名
+          sheet.copyTo(archiveSS).setName(sheetName);
+
+          // 從主試算表刪除
+          ss.deleteSheet(sheet);
+        });
+        archivedMonths.push(yyyyMM);
+      });
+
+      // 清除封存試算表預設的空白分頁
+      ['Sheet1', 'シート1', '工作表1'].forEach(function(name) {
+        var def = archiveSS.getSheetByName(name);
+        if (def && archiveSS.getSheets().length > 1) {
+          try { archiveSS.deleteSheet(def); } catch(e) {}
+        }
+      });
+
+      // 儲存封存試算表 ID 到 Config，供 getSchedule 讀取封存月份
+      setConfig(ss, 'archiveSpreadsheetId', archiveSS.getId());
+    } finally {
+      lock.releaseLock();
+    }
+
+    return {
+      success: true,
+      data: {
+        archived: archivedMonths.length,
+        months: archivedMonths,
+        archiveName: archiveName,
+        archiveId: archiveSS.getId()
+      }
+    };
+  }
+
   return {
     getSchedule,
     saveShift,
@@ -530,7 +676,8 @@ var Schedule = (function () {
     saveHolidays,
     saveHolidayDuty,
     getGovHolidays,
-    getRecentRotationRecord
+    getRecentRotationRecord,
+    archiveOldMonths
   };
 
 })();

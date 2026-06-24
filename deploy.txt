@@ -1,16 +1,41 @@
-#netlify deploy https://delightful-zabaione-5cc15d.netlify.app
+# ══════════════════════════════════════════════
+# 測試版 (boyprincemagician@gmail.com)
+# ══════════════════════════════════════════════
+# VITE_GAS_URL=https://script.google.com/macros/s/AKfycbyhepYA8SA-M2Ulil9itz3dOeKNoBxfPLPUSllt78UAujASG7UpQUPwm02ZbMJzXFKXtg/exec
+# VITE_GOOGLE_CLIENT_ID=15105984863-vo2suk9qqciuid6sun4f0l76s5smrbjt.apps.googleusercontent.com
+# VITE_SYSTEM_LABEL=測試版
+# GAS scriptId: 1ZZH4HaFEEjYOqtS1X-FcD5r5pAGMBDDMrRO0aZI62-eSeFtV0QxlGNek
+# GAS deploymentId: AKfycbyhepYA8SA-M2Ulil9itz3dOeKNoBxfPLPUSllt78UAujASG7UpQUPwm02ZbMJzXFKXtg
+# Netlify: https://delightful-zabaione-5cc15d.netlify.app
+
+# ══════════════════════════════════════════════
+# 正式版 (cgh9anp@gmail.com)
+# ══════════════════════════════════════════════
+# VITE_GAS_URL=https://script.google.com/macros/s/AKfycbxkAXCtVguzGYAQtnBwnghnTklw4itP7sFEyITcRJpFvTcnmTG6XOKJElRlfPosf3CV/exec
+# VITE_GOOGLE_CLIENT_ID=268580837454-79mkov89t1jabtej53ovkbh4h7e3rlmb.apps.googleusercontent.com
+# VITE_SYSTEM_LABEL=正式版
+# GAS scriptId: 1EjTEwRUcs9rG0XpGHHM8C-NjhnyRNC8UtTf127HqIwtjZ_lU-vfAZWra
+# GAS deploymentId: AKfycbxkAXCtVguzGYAQtnBwnghnTklw4itP7sFEyITcRJpFvTcnmTG6XOKJElRlfPosf3CV
+# Netlify: https://melodious-cucurucho-a191f8.netlify.app
+# Netlify (teamoneproject004): https://dynamic-bombolone-029d66.netlify.app
+
+# ══════════════════════════════════════════════
+# 前端部署
+# ══════════════════════════════════════════════
 cd G:\project\scheduler
 
-npm run build && netlify deploy --prod --dir=dist   
+npm run build && netlify deploy --prod --dir=dist
 
-#GAS clasp push +deploy
-
+# ══════════════════════════════════════════════
+# GAS 部署
+# ══════════════════════════════════════════════
 cd G:\project\scheduler\gas
 
-#推送檔案到GAS=存檔
-
+# 推送檔案到 GAS
 clasp push
 
-#部署到GAS
+# 部署到 GAS（測試版）
+# clasp deploy --deploymentId AKfycbyhepYA8SA-M2Ulil9itz3dOeKNoBxfPLPUSllt78UAujASG7UpQUPwm02ZbMJzXFKXtg
 
-clasp deploy --deploymentId AKfycbyhepYA8SA-M2Ulil9itz3dOeKNoBxfPLPUSllt78UAujASG7UpQUPwm02ZbMJzXFKXtg
+# 部署到 GAS（正式版）
+clasp deploy --deploymentId AKfycbxkAXCtVguzGYAQtnBwnghnTklw4itP7sFEyITcRJpFvTcnmTG6XOKJElRlfPosf3CV
