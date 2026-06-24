@@ -62,7 +62,7 @@ export function useRotationProjection() {
     let checkMonth = addMonths(yyyyMM, -1)
     for (let i = 0; i < 6; i++) {
       try {
-        const result = await api.getSchedule({ yyyyMM: checkMonth })
+        const result = await api.getSchedule(checkMonth)
         if (result.success && result.data.meta?.proposedPools) {
           const proposed = typeof result.data.meta.proposedPools === 'string'
             ? JSON.parse(result.data.meta.proposedPools)
