@@ -72,6 +72,23 @@
 - 減去已鎖定班別的現有計數
 - W6Off 共用 Off 預算：W6Off 同時消耗 `rem.W6Off` 和 `rem.Off`
 
+### noNight — 禁止夜班人員
+
+`Users` 分頁的 `noNight` 欄位（布林值）標記「不可上夜班」人員。此限制是**雙層保護**：
+
+1. **配額層（`Rotation.gs::redistributeNoNightQuota`，月初配額計算時執行一次）**
+   `applyMonthlyShiftQuota` 依正常公平演算法算出每人 N/D 配額後，對 `noNight` 人員執行再分配：
+   - 該人員的 N 配額全數歸零，等量加回其 D 配額（夜班還原為白班，總工作天數不變）
+   - 每移出 1 天 N，就分給「目前 N 配額最低」的非 `noNight` 人員 1 天（每次重新排序，確保多單位移轉時仍維持公平），該受配者的 D 配額同時扣 1 天
+   - N 班的「期望值」（fairness ledger 用於計算 `balanceAfter`）也改以「非 noNight 人數」分攤，`noNight` 人員的 N 期望值視為 0，避免月底累積無法消除的虛假餘額債務
+2. **排班層（`AutoSchedule.gs::autoFillSchedule`，硬性排除，防止配額層被繞過）**
+   - 初始化 `rem` 後立即將所有 `noNight` 人員的 `rem.N` 清零並併入 `rem.D`（保險措施，即使配額層已處理）
+   - `stepN` 的群組平移（`tryNGroupShift`）不會挑選 `noNight` 人員的群組
+   - `stepN` 的逐日缺額回填（fallback backfill）兩個 pass 皆排除 `noNight` 人員（含原本未檢查配額的 pass 1）
+   - 手動修正函式 `fwNShortage`、`fwWuZhiViolation`（N 班缺額/勿值違規修正）皆排除 `noNight` 人員作為候選人
+
+> `noNight` 人員仍可正常排 D/Off/AM 等其他班別，只是永不出現 N。
+
 ### 鎖定邏輯
 
 Schedule sheet 中**任何非空格**均視為鎖定，自動排班不覆寫。

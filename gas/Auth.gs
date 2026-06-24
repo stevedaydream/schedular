@@ -7,6 +7,15 @@ var Auth = (function () {
   var JWT_SECRET_KEY = 'JWT_SECRET';
   var USERS_SHEET = 'Users';
 
+  // 既有 Users 分頁可能無 noNight 欄（功能新增前建立），動態補上欄位避免欄位錯位
+  function ensureNoNightColumn(sheet) {
+    if (!sheet || sheet.getLastColumn() === 0) return;
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    if (headers.indexOf('noNight') === -1) {
+      sheet.getRange(1, headers.length + 1).setValue('noNight');
+    }
+  }
+
   // ─── JWT ───────────────────────────────────────────────────────────────────
 
   function base64UrlEncode(str) {
@@ -170,6 +179,7 @@ function googleLogin(body) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(USERS_SHEET);
     if (!sheet) return { success: false, error: '找不到 Users 分頁' };
+    ensureNoNightColumn(sheet);
 
     const users = sheetToObjects(sheet).map(u => ({
       userId: u.userId,
@@ -180,7 +190,8 @@ function googleLogin(body) {
       isSupport: u.isSupport === true || u.isSupport === 'true' || u.isSupport === 'TRUE',
       sortOrder: parseInt(u.sortOrder) || 0,
       code: u.code || '',
-      noSchedule: u.noSchedule === true || u.noSchedule === 'true' || u.noSchedule === 'TRUE'
+      noSchedule: u.noSchedule === true || u.noSchedule === 'true' || u.noSchedule === 'TRUE',
+      noNight: u.noNight === true || u.noNight === 'true' || u.noNight === 'TRUE'
       // Note: passwordHash is NOT returned
     }));
 
@@ -188,7 +199,7 @@ function googleLogin(body) {
   }
 
   function addUser(body) {
-    const { name, email, passwordHash, role, isActive, isSupport, sortOrder, code, noSchedule } = body;
+    const { name, email, passwordHash, role, isActive, isSupport, sortOrder, code, noSchedule, noNight } = body;
     if (!name || !email) return { success: false, error: '姓名和 Email 為必填' };
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -197,7 +208,8 @@ function googleLogin(body) {
 
     try {
       const sheet = getOrCreateSheet(ss, USERS_SHEET,
-        ['userId', 'name', 'role', 'email', 'passwordHash', 'isActive', 'isSupport', 'sortOrder', 'code', 'noSchedule']);
+        ['userId', 'name', 'role', 'email', 'passwordHash', 'isActive', 'isSupport', 'sortOrder', 'code', 'noSchedule', 'noNight']);
+      ensureNoNightColumn(sheet);
 
       // Check duplicate email
       const users = sheetToObjects(sheet);
@@ -217,10 +229,11 @@ function googleLogin(body) {
         isSupport === true || isSupport === 'true' ? true : false,
         sortOrder || 0,
         userCode,
-        noSchedule || false
+        noSchedule || false,
+        noNight === true || noNight === 'true' ? true : false
       ]);
 
-      return { success: true, data: { userId, name, role: role || 'member', email, isActive: isActive !== undefined ? isActive : true, isSupport: !!isSupport, sortOrder: sortOrder || 0, code: userCode, noSchedule: !!noSchedule } };
+      return { success: true, data: { userId, name, role: role || 'member', email, isActive: isActive !== undefined ? isActive : true, isSupport: !!isSupport, sortOrder: sortOrder || 0, code: userCode, noSchedule: !!noSchedule, noNight: !!noNight } };
     } finally {
       lock.releaseLock();
     }
@@ -242,6 +255,7 @@ function googleLogin(body) {
     try {
       const sheet = ss.getSheetByName(USERS_SHEET);
       if (!sheet) return { success: false, error: '找不到 Users 分頁' };
+      ensureNoNightColumn(sheet);
 
       const rowIdx = findRowIndex(sheet, 'userId', userId);
       if (rowIdx === -1) return { success: false, error: '找不到此人員' };
@@ -249,7 +263,7 @@ function googleLogin(body) {
       const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
       const row = sheet.getRange(rowIdx, 1, 1, sheet.getLastColumn()).getValues()[0];
 
-      const { name, role, isActive, isSupport, sortOrder, passwordHash, code, noSchedule } = body;
+      const { name, role, isActive, isSupport, sortOrder, passwordHash, code, noSchedule, noNight } = body;
 
       const updates = {};
       if (name !== undefined) updates.name = name;
@@ -260,6 +274,7 @@ function googleLogin(body) {
       if (passwordHash !== undefined) updates.passwordHash = passwordHash;
       if (code !== undefined) updates.code = code;
       if (noSchedule !== undefined) updates.noSchedule = noSchedule === true || noSchedule === 'true' ? true : false;
+      if (noNight !== undefined) updates.noNight = noNight === true || noNight === 'true' ? true : false;
 
       headers.forEach((h, i) => {
         if (updates[h] !== undefined) row[i] = updates[h];
@@ -385,7 +400,8 @@ function googleLogin(body) {
 
     try {
       const sheet = getOrCreateSheet(ss, USERS_SHEET,
-        ['userId', 'name', 'role', 'email', 'passwordHash', 'isActive', 'isSupport', 'sortOrder', 'code', 'noSchedule']);
+        ['userId', 'name', 'role', 'email', 'passwordHash', 'isActive', 'isSupport', 'sortOrder', 'code', 'noSchedule', 'noNight']);
+      ensureNoNightColumn(sheet);
 
       const existingUsers = sheetToObjects(sheet);
       const existingEmails = new Set(existingUsers.map(function(u) { return u.email; }));
@@ -407,13 +423,14 @@ function googleLogin(body) {
         const isActive = u.isActive !== false && u.isActive !== 'false' && u.isActive !== 'FALSE';
         const isSupport = u.isSupport === true || u.isSupport === 'true' || u.isSupport === 'TRUE';
         const noSchedule = u.noSchedule === true || u.noSchedule === 'true' ? true : false;
+        const noNight = u.noNight === true || u.noNight === 'true' ? true : false;
         sheet.appendRow([
           userId, u.name, u.role || 'member', u.email, u.passwordHash || '',
-          isActive, isSupport, u.sortOrder || 0, userCode, noSchedule
+          isActive, isSupport, u.sortOrder || 0, userCode, noSchedule, noNight
         ]);
         existingEmails.add(u.email);
         added.push({ userId, name: u.name, email: u.email, role: u.role || 'member',
-          isActive, isSupport, sortOrder: u.sortOrder || 0, code: userCode, noSchedule });
+          isActive, isSupport, sortOrder: u.sortOrder || 0, code: userCode, noSchedule, noNight });
       });
 
       return { success: true, data: { added, errors } };

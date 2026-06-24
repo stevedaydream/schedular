@@ -139,10 +139,21 @@ var AutoSchedule = (function () {
     var uidLabel = {};
     users.forEach(function (u) { uidLabel[u.userId] = (u.code || u.name || u.userId); });
 
+    // noNight 人員不可上夜班：保險措施（即使 Rotation.gs 配額再分配已執行）；
+    // 將其剩餘 N 配額全數清零並併入 D 配額，避免本引擎任何步驟誤排夜班
+    var noNightIds = {};
+    users.forEach(function (u) {
+      if (u.noNight === true || u.noNight === 'true') {
+        noNightIds[u.userId] = true;
+        rem[u.userId].D += rem[u.userId].N;
+        rem[u.userId].N = 0;
+      }
+    });
+
     var warnings = [];
     // New execution order: pre-mark 勿值 first, then N (most constrained), then weekends, then D, then Off/S1
     stepPreMarkWuZhi(sched, locked, rem, users, requestData, daysInMonth);
-    stepN(sched, locked, rem, users, cal, settings, rules, prevTail, daysInMonth, requestData, warnings, uidLabel);
+    stepN(sched, locked, rem, users, cal, settings, rules, prevTail, daysInMonth, requestData, warnings, uidLabel, noNightIds);
     stepW6(sched, locked, rem, users, cal, settings, rules, prevTail, daysInMonth, requestData, warnings, uidLabel);
     stepD(sched, locked, rem, users, cal, settings, rules, prevTail, daysInMonth, requestData, warnings);
     stepOffS1(sched, locked, rem, users, cal, settings, rules, prevTail, daysInMonth, requestData, warnings);
@@ -324,7 +335,8 @@ var AutoSchedule = (function () {
   // Sort users by fewest available contiguous weekday slots (most constrained first).
   // If placement fails, try shifting another user's non-locked N group by 1 day.
 
-  function stepN(sched, locked, rem, users, cal, settings, rules, prevTail, daysInMonth, requestData, warnings, uidLabel) {
+  function stepN(sched, locked, rem, users, cal, settings, rules, prevTail, daysInMonth, requestData, warnings, uidLabel, noNightIds) {
+    noNightIds = noNightIds || {};
     var weekdayCal = cal.filter(function (c) { return !c.isWeekend; });
     var weekdays = weekdayCal.map(function (c) { return c.day; });
 
@@ -496,6 +508,7 @@ var AutoSchedule = (function () {
       for (var yi = 0; yi < users.length; yi++) {
         var yid = users[yi].userId;
         if (yid === uid) continue;
+        if (noNightIds[yid]) continue; // noNight 人員不參與 N 群平移
 
         // Find Y's non-locked N group of exactly gSize at position [start, start+gSize-1]
         for (var start = 1; start + gSize - 1 <= daysInMonth; start++) {
@@ -606,6 +619,7 @@ var AutoSchedule = (function () {
           for (var ui = 0; ui < users.length; ui++) {
             var uid = users[ui].userId;
             if (locked[uid][day] || sched[uid][day]) continue;
+            if (noNightIds[uid]) continue; // noNight 人員任何 pass 皆不可補 N
             if (pass === 0 && rem[uid].N <= 0) continue; // first pass: quota only
             var nBefore = consNBefore(uid, day, sched, prevTail);
             if (nBefore >= rules.maxConsecutiveN) continue;
@@ -1539,6 +1553,7 @@ var AutoSchedule = (function () {
         for (var ui2 = 0; ui2 < users.length; ui2++) {
           var yid2 = users[ui2].userId;
           if (yid2 === uid || locked[yid2][day]) continue;
+          if (users[ui2].noNight === true || users[ui2].noNight === 'true') continue; // noNight 人員不可被指派 N
           var s = sched[yid2][day];
           if (s !== 'S1' && s !== 'Off') continue;
           var prev2 = day > 1 ? sched[yid2][day - 1] : null;
@@ -1567,6 +1582,7 @@ var AutoSchedule = (function () {
     for (var ui = 0; ui < users.length; ui++) {
       var uid = users[ui].userId;
       if (locked[uid][day]) continue;
+      if (users[ui].noNight === true || users[ui].noNight === 'true') continue; // noNight 人員不可被指派 N
       var s = sched[uid][day];
       if (s !== 'S1' && s !== 'Off') continue;
       var tail = prevTail[uid] || [];
