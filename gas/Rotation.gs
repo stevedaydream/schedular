@@ -162,9 +162,53 @@ var Rotation = (function () {
     };
   }
 
+  // 不可上夜班（noNight）配額再分配：
+  // 將 noNight 人員原本分到的 N 配額全數移除並回填至其 D 配額（夜班還原為白班）；
+  // 同等數量的 N 配額逐一分給其他非 noNight 人員（每次挑目前 N 配額最低者，維持公平），
+  // 每位受配者每多 1 天 N，D 配額即扣 1 天（總工作天數不變，僅班別互換）。
+  // 直接修改 quotasByShift.N.quota / quotasByShift.D.quota（原地修改）。
+  function redistributeNoNightQuota(quotasByShift, userIds) {
+    var usersRes = Auth.getUsers();
+    if (!usersRes.success) return { applied: false };
+
+    var noNightSet = {};
+    usersRes.data.forEach(function(u) {
+      if (userIds.indexOf(u.userId) !== -1 && (u.noNight === true || u.noNight === 'true')) {
+        noNightSet[u.userId] = true;
+      }
+    });
+    var noNightIds = Object.keys(noNightSet);
+    if (noNightIds.length === 0) return { applied: false, noNightIds: [] };
+
+    var eligibleIds = userIds.filter(function(uid) { return !noNightSet[uid]; });
+    var nQuota = quotasByShift.N.quota;
+    var dQuota = quotasByShift.D.quota;
+
+    if (eligibleIds.length === 0) return { applied: false, noNightIds: noNightIds };
+
+    var moves = [];
+    noNightIds.forEach(function(uid) {
+      var amount = nQuota[uid] || 0;
+      if (amount <= 0) return;
+      dQuota[uid] = (dQuota[uid] || 0) + amount;
+      nQuota[uid] = 0;
+      for (var i = 0; i < amount; i++) {
+        // 每次重新依目前 N 配額由低到高排序，挑最低者承接，維持公平
+        eligibleIds.sort(function(a, b) { return (nQuota[a] || 0) - (nQuota[b] || 0); });
+        var receiver = eligibleIds[0];
+        nQuota[receiver] = (nQuota[receiver] || 0) + 1;
+        dQuota[receiver] = Math.max(0, (dQuota[receiver] || 0) - 1);
+        moves.push({ from: uid, to: receiver });
+      }
+    });
+
+    return { applied: true, noNightIds: noNightIds, moves: moves };
+  }
+
   // body: { yyyyMM, totals: {D, N, Off, W6Off}, userIds: [] }
   // Distributes floor/ceil for D, N, Off, W6Off based on balance
   // Saves dQuota, nQuota, offQuota, w6offQuota to ScheduleMeta_{yyyyMM}
+  // 返回值另含 noNightRedistribution（若有 noNight 人員，回報配額轉移細節）
   // Returns preview array: [{ userId, D:{quota,balanceBefore,balanceAfter}, N:{...}, Off:{...}, W6Off:{...} }]
   function applyMonthlyShiftQuota(body) {
     if (body._user?.role !== 'superadmin' && body._user?.role !== 'scheduler') {
@@ -238,6 +282,9 @@ var Rotation = (function () {
         quotasByShift[shift] = { quota: shiftQuota, orderedUserIds: orderedUserIds, base: base, extras: extras, expected: parseFloat(expected.toFixed(4)) };
       });
 
+      // noNight 配額再分配：先於存檔/預覽前完成，確保 nQuota/dQuota 反映最終結果
+      const noNightResult = redistributeNoNightQuota(quotasByShift, userIds);
+
       // Save quota keys to ScheduleMeta
       [
         ['dQuota',     quotasByShift.D.quota],
@@ -254,6 +301,13 @@ var Rotation = (function () {
         }
       });
 
+      // noNight 人員不參與 N 輪序，其「N 期望值」視為 0，避免每月累積無法消除的虛假餘額債務；
+      // N 的期望值改以「非 noNight 人數」分攤總量，其餘班別期望值不受影響
+      const noNightSet = {};
+      (noNightResult.noNightIds || []).forEach(function(uid) { noNightSet[uid] = true; });
+      const eligibleNCount = userIds.filter(function(uid) { return !noNightSet[uid]; }).length;
+      const expectedNPerEligible = eligibleNCount > 0 ? (totals.N || 0) / eligibleNCount : 0;
+
       // Build preview in the distribution order (not original userIds order)
       // Use D's ordered list as the display order; each row contains all shifts
       const previewMap = {};
@@ -264,7 +318,10 @@ var Rotation = (function () {
           const info = quotasByShift[shift];
           const q = info.quota[uid];
           const before = bal[shift] || 0;
-          const after = parseFloat((before + q - info.expected).toFixed(4));
+          const expected = shift === 'N'
+            ? (noNightSet[uid] ? 0 : expectedNPerEligible)
+            : info.expected;
+          const after = parseFloat((before + q - expected).toFixed(4));
           row[shift] = { quota: q, balanceBefore: before, balanceAfter: after, base: info.base, extras: info.extras };
         });
         previewMap[uid] = row;
@@ -272,7 +329,13 @@ var Rotation = (function () {
       // Return rows in D's distribution order for consistent display
       const preview = quotasByShift.D.orderedUserIds.map(function(uid) { return previewMap[uid]; });
 
-      return { success: true, data: { preview, totals, locked: lockedRecord !== null } };
+      return {
+        success: true,
+        data: {
+          preview, totals, locked: lockedRecord !== null,
+          noNightRedistribution: noNightResult.applied ? noNightResult.moves : []
+        }
+      };
     } finally {
       lock.releaseLock();
     }

@@ -286,6 +286,47 @@
           </div>
         </div>
 
+        <!-- Auto-schedule Rules -->
+        <div class="card mt-4">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-base font-semibold">排班規則</h3>
+            <button
+              @click="saveAutoScheduleRules"
+              :disabled="rulesSaving"
+              class="btn-primary text-sm"
+            >{{ rulesSaving ? '儲存中...' : '儲存規則' }}</button>
+          </div>
+
+          <div v-if="rulesSaveOk" class="mb-3 p-2 bg-green-50 border border-green-200 rounded text-sm text-green-700">✓ 規則已儲存</div>
+
+          <div class="flex items-center gap-2 mb-2">
+            <input v-model="rulesForm.forbidFragmentShift" type="checkbox" id="forbidFragmentShift" class="rounded" />
+            <label for="forbidFragmentShift" class="text-sm text-gray-700">
+              禁止碎班
+              <span class="text-xs text-gray-400 ml-1">（休-班-休，啟用後排班時會掃描並警告）</span>
+            </label>
+          </div>
+
+          <div v-if="rulesForm.forbidFragmentShift" class="ml-6">
+            <p class="text-xs text-gray-500 mb-1">視為碎班的班別：</p>
+            <div class="flex flex-wrap gap-3">
+              <label
+                v-for="t in fragmentShiftCandidates"
+                :key="t.id"
+                class="flex items-center gap-1.5 text-sm text-gray-700"
+              >
+                <input
+                  type="checkbox"
+                  class="rounded"
+                  :checked="rulesForm.fragmentShiftTypes.includes(t.id)"
+                  @change="toggleFragmentShiftType(t.id)"
+                />
+                {{ t.label || t.id }}
+              </label>
+            </div>
+          </div>
+        </div>
+
         <!-- Rotation Preview -->
         <div class="card mt-4">
           <div class="flex items-center justify-between mb-3">
@@ -726,6 +767,32 @@
           </div>
         </div>
       </div>
+
+      <!-- System Settings -->
+      <div v-if="activeTab === 'system'">
+        <div class="card">
+          <h3 class="text-base font-semibold mb-1">系統設定</h3>
+          <p class="text-sm text-gray-500 mb-4">系統相關的外部資源與連結。</p>
+
+          <div class="border border-gray-200 rounded-lg p-4">
+            <h4 class="font-medium text-gray-800 mb-1">主資料試算表</h4>
+            <p class="text-xs text-gray-500 mb-3">
+              開啟後端 Google 試算表（班表、人員、設定等原始資料）。請謹慎修改，避免破壞系統資料結構。
+            </p>
+            <a
+              :href="SPREADSHEET_URL"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn-primary text-sm inline-flex items-center gap-2"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+              </svg>
+              開啟主試算表
+            </a>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 </template>
@@ -749,14 +816,19 @@ const activeTab = ref('users')
 
 watch(activeTab, (tab) => {
   if (tab === 'rotation' && editingPools.value.length === 0) loadRotation()
+  if (tab === 'rotation') initRulesForm()
 })
 const tabs = [
   { id: 'users', label: '人員管理' },
   { id: 'shifts', label: '班別管理' },
   { id: 'rotation', label: '輪序管理' },
   { id: 'holidays', label: '國定假日' },
-  { id: 'backup', label: '備份匯出' }
+  { id: 'backup', label: '備份匯出' },
+  { id: 'system', label: '系統設定' }
 ]
+
+// 主資料試算表（Google Sheets）連結
+const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1SitOBsyKtBsHr_OAih2A1Ans_El6ns5IHlcoQwoVPy8/edit?gid=1884631028#gid=1884631028'
 
 // ── Shift Types ─────────────────────────────────────────────
 const shiftTypesStore = useShiftTypesStore()
@@ -846,6 +918,51 @@ const POOL_LABELS = {
 
 function poolLabel(name) {
   return POOL_LABELS[name] || name
+}
+
+// ── Auto-schedule Rules ────────────────────────────────────────
+const rulesSaving = ref(false)
+const rulesSaveOk = ref(false)
+const rulesForm = reactive({
+  forbidFragmentShift: true,
+  fragmentShiftTypes: ['D', 'N']
+})
+
+const fragmentShiftCandidates = computed(() =>
+  shiftTypesStore.shiftTypes.filter(t => !t.requestOnly && t.id !== 'Off')
+)
+
+function initRulesForm() {
+  let parsed = null
+  try {
+    parsed = settingsStore.settings.autoScheduleRules
+      ? JSON.parse(settingsStore.settings.autoScheduleRules)
+      : null
+  } catch {
+    parsed = null
+  }
+  rulesForm.forbidFragmentShift = parsed?.forbidFragmentShift !== false
+  rulesForm.fragmentShiftTypes = parsed?.fragmentShiftTypes?.length ? [...parsed.fragmentShiftTypes] : ['D', 'N']
+  rulesSaveOk.value = false
+}
+
+function toggleFragmentShiftType(id) {
+  const idx = rulesForm.fragmentShiftTypes.indexOf(id)
+  if (idx === -1) rulesForm.fragmentShiftTypes.push(id)
+  else rulesForm.fragmentShiftTypes.splice(idx, 1)
+}
+
+async function saveAutoScheduleRules() {
+  rulesSaving.value = true
+  rulesSaveOk.value = false
+  const ok = await settingsStore.updateSettings({
+    autoScheduleRules: JSON.stringify({
+      forbidFragmentShift: rulesForm.forbidFragmentShift,
+      fragmentShiftTypes: rulesForm.fragmentShiftTypes
+    })
+  })
+  rulesSaving.value = false
+  if (ok) rulesSaveOk.value = true
 }
 
 function getUserName(userId) {

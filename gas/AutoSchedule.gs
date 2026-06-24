@@ -139,10 +139,21 @@ var AutoSchedule = (function () {
     var uidLabel = {};
     users.forEach(function (u) { uidLabel[u.userId] = (u.code || u.name || u.userId); });
 
+    // noNight 人員不可上夜班：保險措施（即使 Rotation.gs 配額再分配已執行）；
+    // 將其剩餘 N 配額全數清零並併入 D 配額，避免本引擎任何步驟誤排夜班
+    var noNightIds = {};
+    users.forEach(function (u) {
+      if (u.noNight === true || u.noNight === 'true') {
+        noNightIds[u.userId] = true;
+        rem[u.userId].D += rem[u.userId].N;
+        rem[u.userId].N = 0;
+      }
+    });
+
     var warnings = [];
     // New execution order: pre-mark 勿值 first, then N (most constrained), then weekends, then D, then Off/S1
     stepPreMarkWuZhi(sched, locked, rem, users, requestData, daysInMonth);
-    stepN(sched, locked, rem, users, cal, settings, rules, prevTail, daysInMonth, requestData, warnings, uidLabel);
+    stepN(sched, locked, rem, users, cal, settings, rules, prevTail, daysInMonth, requestData, warnings, uidLabel, noNightIds);
     stepW6(sched, locked, rem, users, cal, settings, rules, prevTail, daysInMonth, requestData, warnings, uidLabel);
     stepD(sched, locked, rem, users, cal, settings, rules, prevTail, daysInMonth, requestData, warnings);
     stepOffS1(sched, locked, rem, users, cal, settings, rules, prevTail, daysInMonth, requestData, warnings);
@@ -151,6 +162,7 @@ var AutoSchedule = (function () {
     stepEnforceWeeklyOff(sched, locked, users, cal, prevTail, daysInMonth, warnings, uidLabel);
     stepPostCheck(sched, locked, users, daysInMonth, warnings, uidLabel);
     stepFinalValidate(sched, locked, users, requestData, daysInMonth, warnings, uidLabel);
+    scanFragmentShifts(sched, locked, users, daysInMonth, prevTail, rules, warnings, uidLabel);
 
     var preview = {};
     users.forEach(function (u) {
@@ -210,7 +222,11 @@ var AutoSchedule = (function () {
   function parseRules(settings) {
     var defaults = {
       maxConsecutiveWork: 6, maxConsecutiveN: 4, preferNGroup: 3,
-      maxDPerWeek: 3, nMustEndOff: true, avoidNOffD: true
+      maxDPerWeek: 3, nMustEndOff: true, avoidNOffD: true,
+      // 碎班檢查（休-班-休，單日工作夾在兩個休假之間）
+      // forbidFragmentShift: 總開關；false 則完全略過碎班掃描
+      // fragmentShiftTypes: 視為「碎班」的班別值，預設只看全日臨床班 D / N
+      forbidFragmentShift: true, fragmentShiftTypes: ['D', 'N']
     };
     if (!settings.autoScheduleRules) return defaults;
     try {
@@ -319,7 +335,8 @@ var AutoSchedule = (function () {
   // Sort users by fewest available contiguous weekday slots (most constrained first).
   // If placement fails, try shifting another user's non-locked N group by 1 day.
 
-  function stepN(sched, locked, rem, users, cal, settings, rules, prevTail, daysInMonth, requestData, warnings, uidLabel) {
+  function stepN(sched, locked, rem, users, cal, settings, rules, prevTail, daysInMonth, requestData, warnings, uidLabel, noNightIds) {
+    noNightIds = noNightIds || {};
     var weekdayCal = cal.filter(function (c) { return !c.isWeekend; });
     var weekdays = weekdayCal.map(function (c) { return c.day; });
 
@@ -491,6 +508,7 @@ var AutoSchedule = (function () {
       for (var yi = 0; yi < users.length; yi++) {
         var yid = users[yi].userId;
         if (yid === uid) continue;
+        if (noNightIds[yid]) continue; // noNight 人員不參與 N 群平移
 
         // Find Y's non-locked N group of exactly gSize at position [start, start+gSize-1]
         for (var start = 1; start + gSize - 1 <= daysInMonth; start++) {
@@ -601,6 +619,7 @@ var AutoSchedule = (function () {
           for (var ui = 0; ui < users.length; ui++) {
             var uid = users[ui].userId;
             if (locked[uid][day] || sched[uid][day]) continue;
+            if (noNightIds[uid]) continue; // noNight 人員任何 pass 皆不可補 N
             if (pass === 0 && rem[uid].N <= 0) continue; // first pass: quota only
             var nBefore = consNBefore(uid, day, sched, prevTail);
             if (nBefore >= rules.maxConsecutiveN) continue;
@@ -1227,6 +1246,36 @@ var AutoSchedule = (function () {
     });
   }
 
+  // ─── Step 8: Fragment-shift scan（碎班檢查，參數化開關）────────────────────
+  // 偵測「休-班-休」碎班：單日工作日，其前一天與後一天皆為休假（Off/W6Off）。
+  // 由 rules.forbidFragmentShift 控制是否啟用；rules.fragmentShiftTypes 控制
+  // 哪些班別值視為碎班（預設只看 D / N，可加入 'S1' / 'H3'）。
+  // 僅產生資訊性 FragmentShift 警告，不自動修正（避免動到每日人力與配額平衡）。
+
+  function isRestShift(s) { return s === 'Off' || s === 'W6Off'; }
+
+  function scanFragmentShifts(sched, locked, users, daysInMonth, prevTail, rules, warnings, uidLabel) {
+    if (!rules || !rules.forbidFragmentShift) return;
+    var fragTypes = (rules.fragmentShiftTypes && rules.fragmentShiftTypes.length)
+      ? rules.fragmentShiftTypes : ['D', 'N'];
+    function isFragType(s) { return fragTypes.indexOf(s) !== -1; }
+
+    users.forEach(function (u) {
+      var uid = u.userId;
+      for (var d = 1; d <= daysInMonth; d++) {
+        if (!isFragType(sched[uid][d])) continue;
+        // 末日無法確認下一天（跨月），略過避免誤報
+        if (d >= daysInMonth) continue;
+        if (!isRestShift(sched[uid][d + 1])) continue;
+        // 前一天：第1天回看上月尾段（prevTail）；無資料則略過
+        var prev = getAt(uid, d - 1, sched, prevTail);
+        if (!isRestShift(prev)) continue;
+        warnings.push(mkWarn('FragmentShift',
+          (uidLabel[uid] || uid) + ': 第' + d + '天 ' + sched[uid][d] + ' 為碎班（前後皆休）', uid, d));
+      }
+    });
+  }
+
   // ─── Fix Warning (on-demand targeted swap) ────────────────────────────────
 
   function fixWarning(body) {
@@ -1504,6 +1553,7 @@ var AutoSchedule = (function () {
         for (var ui2 = 0; ui2 < users.length; ui2++) {
           var yid2 = users[ui2].userId;
           if (yid2 === uid || locked[yid2][day]) continue;
+          if (users[ui2].noNight === true || users[ui2].noNight === 'true') continue; // noNight 人員不可被指派 N
           var s = sched[yid2][day];
           if (s !== 'S1' && s !== 'Off') continue;
           var prev2 = day > 1 ? sched[yid2][day - 1] : null;
@@ -1532,6 +1582,7 @@ var AutoSchedule = (function () {
     for (var ui = 0; ui < users.length; ui++) {
       var uid = users[ui].userId;
       if (locked[uid][day]) continue;
+      if (users[ui].noNight === true || users[ui].noNight === 'true') continue; // noNight 人員不可被指派 N
       var s = sched[uid][day];
       if (s !== 'S1' && s !== 'Off') continue;
       var tail = prevTail[uid] || [];
@@ -1680,6 +1731,7 @@ var AutoSchedule = (function () {
 
     var settingsResult = Settings_.getSettings();
     var settings = settingsResult.success ? settingsResult.data : {};
+    var rules = parseRules(settings);
     var wdD  = parseInt(settings.wdD)  || 1;
     var wdN  = parseInt(settings.wdN)  || 1;
     var wdS1 = parseInt(settings.wdS1) || 2;
@@ -1841,6 +1893,9 @@ var AutoSchedule = (function () {
             '第' + day + '天(六) H3=' + h3Count + '/' + satH3, null, day));
       }
     });
+
+    // ── 碎班掃描（休-班-休，參數化開關）──────────────────────────────────────
+    scanFragmentShifts(sched, locked, users, daysInMonth, prevTail, rules, warnings, uidLabel);
 
     return { success: true, data: { warnings: warnings } };
   }
