@@ -87,8 +87,12 @@ Schedule sheet 中**任何非空格**均視為鎖定，自動排班不覆寫。
 | `maxDPerWeek` | 3 | 每週最多 D 班數 |
 | `nMustEndOff` | true | N 班後必須接 Off |
 | `avoidNOffD` | true | 避免 N→Off→D 模式 |
+| `forbidFragmentShift` | true | 碎班檢查總開關（休-班-休）；false 則略過掃描 |
+| `fragmentShiftTypes` | `['D','N']` | 視為碎班的班別值，可加入 `'S1'`/`'H3'` |
 
 可透過 Settings sheet 的 `autoScheduleRules` 欄位（JSON 字串）覆寫。
+
+> **碎班開關**：`forbidFragmentShift` 為參數化總開關，預設啟用。設為 `false` 即完全停用碎班掃描。`fragmentShiftTypes` 控制哪些班別被視為碎班——預設只看全日臨床班 D/N，避免半日班 S1 作為填充時產生大量雜訊。
 
 ---
 
@@ -105,6 +109,7 @@ Step 0 (no-op)
 → Step 5.6: stepEnforceWeeklyOff  強制週休
 → Step 6: stepPostCheck      N→Off→D 鏈式交換
 → Step 7: stepFinalValidate  勿值違規掃描
+→ Step 8: scanFragmentShifts 碎班掃描（參數化開關）
 ```
 
 ---
@@ -315,6 +320,22 @@ NO_DN 使用者在此步驟與一般使用者**相同**（D/N 已在前面步驟
 
 ---
 
+### Step 8：scanFragmentShifts — 碎班掃描（參數化開關）
+
+**啟用條件**：`rules.forbidFragmentShift === true`（預設啟用，設 `false` 則整步略過）
+
+偵測「休-班-休」碎班：對每位使用者每一天，若該天班別屬於 `rules.fragmentShiftTypes`（預設 `['D','N']`），且**前一天**與**後一天**皆為休假（`Off`/`W6Off`），即發出 `FragmentShift` 警告。
+
+邊界處理：
+- 第 1 天的前一天回看上月尾段（`prevTail`）；無資料則略過該天（不誤報）。
+- 月底最後一天無法確認下個月，略過（不誤報）。
+
+> 僅產生**資訊性**警告，不自動修正——修正碎班會連動每日人力需求與配額平衡，交由排班者人工判斷處理。
+>
+> 對應截圖參考系統的「禁止碎班（O-D-O／O-E-O／O-N-O）」硬規則，但此處以可開關的軟性提醒實作，預設只看 D/N 全日臨床班。
+
+---
+
 ## 六、警告類型一覽
 
 | type | 說明 | userId | day | 可自動修正 |
@@ -337,6 +358,7 @@ NO_DN 使用者在此步驟與一般使用者**相同**（D/N 已在前面步驟
 | `ForceOff` | 強制插入 Off（7天窗口無休） | ✓ | ✓ | — |
 | `WeeklyOffFail` | 7天窗口無法插入休息（均鎖定） | ✓ | ✓ | — |
 | `WuZhiViolation` | 勿值日被排禁止班別 | ✓ | ✓ | ✓ |
+| `FragmentShift` | 碎班（休-班-休，單日工作夾於兩休假間） | ✓ | ✓ | — |
 | `QuotaDRebalance` | A D 超配額、B D 不足，建議同日對換 | ✓（A） | ✓ | ✓ |
 
 > `QuotaDRebalance` 由 `rescanSchedule` 產生，`targetUserId` 欄位存放 B 的 userId。
@@ -421,6 +443,10 @@ WuZhiViolation → NOffDFail → NShortage → DShortage → H3Shortage
 | 非假日週六（isSat && !isHol） | H3 < satH3 | `H3Shortage` |
 
 > `QuotaOffToS1`（舊版）已從 rescanSchedule 移除，改由 `S1Shortage` 統一處理，避免同日重複修正。
+
+### 碎班掃描（FragmentShift）
+
+`rescanSchedule` 結尾呼叫 `scanFragmentShifts`，與 `autoFillSchedule` 共用同一份規則參數（`forbidFragmentShift` / `fragmentShiftTypes`）。班表寫回後重新掃描時亦能偵測碎班（資訊性，不自動修正）。
 
 **回傳**：`{ warnings: [...] }`
 前端以 type+day+userId 為 key 去重後 append 到現有警告列表。

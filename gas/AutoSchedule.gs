@@ -151,6 +151,7 @@ var AutoSchedule = (function () {
     stepEnforceWeeklyOff(sched, locked, users, cal, prevTail, daysInMonth, warnings, uidLabel);
     stepPostCheck(sched, locked, users, daysInMonth, warnings, uidLabel);
     stepFinalValidate(sched, locked, users, requestData, daysInMonth, warnings, uidLabel);
+    scanFragmentShifts(sched, locked, users, daysInMonth, prevTail, rules, warnings, uidLabel);
 
     var preview = {};
     users.forEach(function (u) {
@@ -210,7 +211,11 @@ var AutoSchedule = (function () {
   function parseRules(settings) {
     var defaults = {
       maxConsecutiveWork: 6, maxConsecutiveN: 4, preferNGroup: 3,
-      maxDPerWeek: 3, nMustEndOff: true, avoidNOffD: true
+      maxDPerWeek: 3, nMustEndOff: true, avoidNOffD: true,
+      // 碎班檢查（休-班-休，單日工作夾在兩個休假之間）
+      // forbidFragmentShift: 總開關；false 則完全略過碎班掃描
+      // fragmentShiftTypes: 視為「碎班」的班別值，預設只看全日臨床班 D / N
+      forbidFragmentShift: true, fragmentShiftTypes: ['D', 'N']
     };
     if (!settings.autoScheduleRules) return defaults;
     try {
@@ -1227,6 +1232,36 @@ var AutoSchedule = (function () {
     });
   }
 
+  // ─── Step 8: Fragment-shift scan（碎班檢查，參數化開關）────────────────────
+  // 偵測「休-班-休」碎班：單日工作日，其前一天與後一天皆為休假（Off/W6Off）。
+  // 由 rules.forbidFragmentShift 控制是否啟用；rules.fragmentShiftTypes 控制
+  // 哪些班別值視為碎班（預設只看 D / N，可加入 'S1' / 'H3'）。
+  // 僅產生資訊性 FragmentShift 警告，不自動修正（避免動到每日人力與配額平衡）。
+
+  function isRestShift(s) { return s === 'Off' || s === 'W6Off'; }
+
+  function scanFragmentShifts(sched, locked, users, daysInMonth, prevTail, rules, warnings, uidLabel) {
+    if (!rules || !rules.forbidFragmentShift) return;
+    var fragTypes = (rules.fragmentShiftTypes && rules.fragmentShiftTypes.length)
+      ? rules.fragmentShiftTypes : ['D', 'N'];
+    function isFragType(s) { return fragTypes.indexOf(s) !== -1; }
+
+    users.forEach(function (u) {
+      var uid = u.userId;
+      for (var d = 1; d <= daysInMonth; d++) {
+        if (!isFragType(sched[uid][d])) continue;
+        // 末日無法確認下一天（跨月），略過避免誤報
+        if (d >= daysInMonth) continue;
+        if (!isRestShift(sched[uid][d + 1])) continue;
+        // 前一天：第1天回看上月尾段（prevTail）；無資料則略過
+        var prev = getAt(uid, d - 1, sched, prevTail);
+        if (!isRestShift(prev)) continue;
+        warnings.push(mkWarn('FragmentShift',
+          (uidLabel[uid] || uid) + ': 第' + d + '天 ' + sched[uid][d] + ' 為碎班（前後皆休）', uid, d));
+      }
+    });
+  }
+
   // ─── Fix Warning (on-demand targeted swap) ────────────────────────────────
 
   function fixWarning(body) {
@@ -1680,6 +1715,7 @@ var AutoSchedule = (function () {
 
     var settingsResult = Settings_.getSettings();
     var settings = settingsResult.success ? settingsResult.data : {};
+    var rules = parseRules(settings);
     var wdD  = parseInt(settings.wdD)  || 1;
     var wdN  = parseInt(settings.wdN)  || 1;
     var wdS1 = parseInt(settings.wdS1) || 2;
@@ -1841,6 +1877,9 @@ var AutoSchedule = (function () {
             '第' + day + '天(六) H3=' + h3Count + '/' + satH3, null, day));
       }
     });
+
+    // ── 碎班掃描（休-班-休，參數化開關）──────────────────────────────────────
+    scanFragmentShifts(sched, locked, users, daysInMonth, prevTail, rules, warnings, uidLabel);
 
     return { success: true, data: { warnings: warnings } };
   }
