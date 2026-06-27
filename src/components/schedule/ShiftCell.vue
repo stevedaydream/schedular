@@ -2,14 +2,14 @@
   <div
     ref="cellEl"
     :class="[
-      'relative w-full min-w-[44px] min-h-[36px] flex items-center justify-center select-none',
+      'relative w-full min-w-[44px] min-h-[36px] flex items-center justify-center select-none transition-all duration-150',
       cellClass,
-      isEditable ? 'cursor-pointer' : 'cursor-default'
+      isEditable ? (activeBrush ? 'cursor-crosshair' : 'cursor-pointer') : 'cursor-default'
     ]"
     :title="tooltipText"
     @click="isEditable && !suppressClick && openPicker()"
   >
-    <span class="text-xs font-medium">{{ displayValue }}</span>
+    <span class="text-xs font-semibold">{{ displayValue }}</span>
 
     <!-- OverBook warning -->
     <span
@@ -131,7 +131,8 @@ const props = defineProps({
   requestShift: { type: String, default: null },
   rotRefSource: { type: String, default: null }, // 'schedule' | 'projected'
   isDisputedRequest: { type: Boolean, default: false },
-  includeRequestOnly: { type: Boolean, default: false }
+  includeRequestOnly: { type: Boolean, default: false },
+  activeBrush: { type: String, default: null }
 })
 
 const emit = defineEmits(['update'])

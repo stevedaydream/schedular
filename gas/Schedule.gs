@@ -70,6 +70,11 @@ var Schedule = (function () {
           try { meta[key] = JSON.parse(meta[key]); } catch (e) { meta[key] = {}; }
         }
       });
+      if (meta.excludedUsers && typeof meta.excludedUsers === 'string') {
+        try { meta.excludedUsers = JSON.parse(meta.excludedUsers); } catch (e) { meta.excludedUsers = []; }
+      } else if (!meta.excludedUsers) {
+        meta.excludedUsers = [];
+      }
       meta.isLocked = meta.isLocked === 'true' || meta.isLocked === true;
     }
 
@@ -262,6 +267,8 @@ var Schedule = (function () {
           const poolsSheet = getOrCreateSheet(ss, 'RotationPools', ['poolName', 'data']);
           Object.entries(proposedPools).forEach(function([poolName, poolData]) {
             const rowIdx = findRowIndex(poolsSheet, 'poolName', poolName);
+            poolData.updatedMonth = yyyyMM;
+            poolData.updatedAt = new Date().toISOString();
             if (rowIdx !== -1) {
               poolsSheet.getRange(rowIdx, 2).setValue(JSON.stringify(poolData));
             } else {

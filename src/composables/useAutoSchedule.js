@@ -35,8 +35,9 @@ export function useAutoSchedule(scheduleStore, settingsStore) {
       const { users, settings, rotationPools } = settingsStore
 
       // Get active users
+      const excluded = scheduleStore.meta?.excludedUsers || []
       const activeUsers = users.filter(
-        u => u.isActive !== false && u.isActive !== 'false' && !(u.noSchedule === true || u.noSchedule === 'true')
+        u => u.isActive !== false && u.isActive !== 'false' && !(u.noSchedule === true || u.noSchedule === 'true') && !excluded.includes(u.userId)
       )
 
       if (activeUsers.length === 0) {

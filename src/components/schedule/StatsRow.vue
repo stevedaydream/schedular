@@ -39,14 +39,23 @@
           <div class="text-gray-400 mb-1.5">
             輪序配額：{{ rotationQuota?.[expandedType] ?? '–' }}
           </div>
-          <div class="flex items-center gap-1 mb-1.5">
+          <div class="flex items-center gap-1.5 mb-1.5 select-none">
             <label class="text-gray-500 shrink-0">自訂目標：</label>
-            <input
-              v-model.number="editTarget"
-              type="number"
-              min="0"
-              class="w-12 border border-gray-300 rounded px-1 py-0.5 text-xs text-center"
-            />
+            <div class="flex items-center border border-gray-300 rounded overflow-hidden">
+              <button
+                type="button"
+                @click="decrementTarget"
+                class="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold active:bg-gray-300 transition-colors border-r"
+              >-</button>
+              <div class="w-10 text-center font-bold text-xs py-0.5 bg-white text-slate-800">
+                {{ editTarget !== '' && editTarget !== null ? editTarget : 0 }}
+              </div>
+              <button
+                type="button"
+                @click="incrementTarget"
+                class="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold active:bg-gray-300 transition-colors border-l"
+              >+</button>
+            </div>
           </div>
           <div class="mb-2">
             <label class="text-gray-500 block mb-0.5">備註：</label>
@@ -241,5 +250,15 @@ function clearOverride() {
   if (!type) return
   emit('update-override', { type, target: null, note: '' })
   expandedType.value = null
+}
+
+function decrementTarget() {
+  const current = Number(editTarget.value) || 0
+  editTarget.value = Math.max(0, current - 1)
+}
+
+function incrementTarget() {
+  const current = Number(editTarget.value) || 0
+  editTarget.value = current + 1
 }
 </script>

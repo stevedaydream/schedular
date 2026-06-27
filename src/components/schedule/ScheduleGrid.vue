@@ -1,6 +1,9 @@
 <template>
-  <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
-    <table class="text-xs border-collapse" style="min-width: max-content">
+  <div
+    class="overflow-x-auto rounded-lg border shadow-sm transition-all duration-300"
+    :class="activeBrush ? 'border-blue-400 ring-2 ring-blue-400/20' : 'border-gray-200'"
+  >
+    <table class="text-xs border-collapse font-mono" style="min-width: max-content">
       <!-- Day number row -->
       <thead>
         <!-- Holiday name row -->
@@ -61,7 +64,7 @@
           :key="user.userId"
           :class="rowClass(user.userId)"
           @mouseenter="hoveredUserId = user.userId"
-          @mouseleave="hoveredUserId = null"
+          @mouseleave="() => { hoveredUserId = null; hoveredDay = null }"
           @dragover="onRowDragOver(user.userId, $event)"
           @dragleave="onRowDragLeave"
           @drop="onRowDrop(user.userId, $event)"
@@ -89,7 +92,11 @@
           <td
             v-for="dayInfo in monthDays"
             :key="`${user.userId}-${dayInfo.day}`"
-            class="border border-gray-200 p-0"
+            class="border border-gray-200 p-0 transition-colors duration-150 relative"
+            :class="{
+              'bg-slate-100/40': hoveredUserId === user.userId || hoveredDay === dayInfo.day,
+              'ring-2 ring-blue-500 ring-inset z-10': hoveredUserId === user.userId && hoveredDay === dayInfo.day
+            }"
             :style="dayCellBg(dayInfo)"
             :data-uid="user.userId"
             :data-d="dayInfo.day"
@@ -100,13 +107,14 @@
             <ShiftCell
               :shift="getShift(user.userId, dayInfo.day)"
               :isEditable="isEditable"
-              :suppressClick="isDragging"
+              :suppressClick="isDragging || !!activeBrush"
               :isInDragSelection="isDragSelected(user.userId, dayInfo.day)"
               :isOverBooked="isOverBooked(user.userId, dayInfo.day)"
               :cellNote="getCellNote(user.userId, dayInfo.day)"
               :dayType="getDayTypeForDate(dayInfo.dateStr)"
               :requestShift="getRequestShift(user.userId, dayInfo.day)"
               :isDisputedRequest="isDisputedRequest(user.userId, dayInfo.day)"
+              :activeBrush="activeBrush"
               @update="(shift) => handleUpdate(user.userId, dayInfo.day, shift)"
             />
           </td>
@@ -230,6 +238,10 @@ const props = defineProps({
   requestData: {
     type: Object,
     default: () => ({})
+  },
+  activeBrush: {
+    type: String,
+    default: null
   }
 })
 
@@ -404,6 +416,7 @@ function handleUpdate(userId, day, shift) {
 
 // ── Row hover highlight ──────────────────────────────────────
 const hoveredUserId = ref(null)
+const hoveredDay = ref(null)
 
 // ── Row drag-to-reorder ──────────────────────────────────────
 const rowDragUserId = ref(null)
@@ -494,16 +507,40 @@ function isDragSelected(userId, day) {
   return dragCells.value.some(c => c.userId === userId && c.day === day)
 }
 
+let paintStarted = false
+
+function paintCell(userId, day) {
+  const shift = props.activeBrush === 'CLEAR' ? null : props.activeBrush
+  handleUpdate(userId, day, shift)
+}
+
 function onCellMousedown(userId, day, event) {
   if (!props.isEditable) return
   event.preventDefault()
+
+  if (props.activeBrush) {
+    paintStarted = true
+    paintCell(userId, day)
+    return
+  }
+
   dragStarted = true
   isDragging.value = false
   dragCells.value = [{ userId, day }]
 }
 
 function onCellMouseenter(userId, day) {
-  if (!dragStarted || !props.isEditable) return
+  hoveredDay.value = day
+  if (!props.isEditable) return
+
+  if (props.activeBrush) {
+    if (paintStarted) {
+      paintCell(userId, day)
+    }
+    return
+  }
+
+  if (!dragStarted) return
   if (!dragCells.value.some(c => c.userId === userId && c.day === day)) {
     isDragging.value = true
     dragCells.value.push({ userId, day })
@@ -511,6 +548,7 @@ function onCellMouseenter(userId, day) {
 }
 
 function onDocumentMouseup(event) {
+  paintStarted = false
   if (!dragStarted) return
   dragStarted = false
   if (isDragging.value && dragCells.value.length > 1) {
@@ -543,6 +581,11 @@ let touchDragActive = false
 
 function onCellTouchStart(userId, day, event) {
   if (!props.isEditable) return
+  if (props.activeBrush) {
+    paintStarted = true
+    paintCell(userId, day)
+    return
+  }
   clearTimeout(touchTimer)
   touchDragActive = false
   touchTimer = setTimeout(() => {
@@ -555,6 +598,20 @@ function onCellTouchStart(userId, day, event) {
 }
 
 function onDocumentTouchMove(event) {
+  if (props.activeBrush && paintStarted) {
+    event.preventDefault()
+    const touch = event.touches[0]
+    const el = document.elementFromPoint(touch.clientX, touch.clientY)
+    if (!el) return
+    const td = el.closest('[data-uid]')
+    if (!td) return
+    const uid = td.dataset.uid
+    const day = parseInt(td.dataset.d)
+    if (!uid || !day) return
+    paintCell(uid, day)
+    return
+  }
+
   if (!touchDragActive) {
     // Clear timer if finger moved before long press fires
     if (touchTimer) { clearTimeout(touchTimer); touchTimer = null }
@@ -576,6 +633,7 @@ function onDocumentTouchMove(event) {
 }
 
 function onDocumentTouchEnd(event) {
+  paintStarted = false
   clearTimeout(touchTimer)
   touchTimer = null
   if (!touchDragActive) return
@@ -594,6 +652,7 @@ function onDocumentTouchEnd(event) {
 }
 
 function onDocumentTouchCancel() {
+  paintStarted = false
   clearTimeout(touchTimer)
   touchTimer = null
   touchDragActive = false

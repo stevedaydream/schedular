@@ -45,7 +45,9 @@ var Rotation = (function () {
           poolName,
           order: [...userIds],
           lastIndex: -1,
-          skipQueue: []
+          skipQueue: [],
+          updatedMonth: '系統初始化',
+          updatedAt: new Date().toISOString()
         };
 
         const rowIdx = findRowIndex(sheet, 'poolName', poolName);
@@ -110,6 +112,8 @@ var Rotation = (function () {
     }
     const { poolName, poolData } = body;
     if (!poolName || !poolData) return { success: false, error: '缺少 poolName 或 poolData' };
+    poolData.updatedMonth = '手動修改';
+    poolData.updatedAt = new Date().toISOString();
     return updatePool(poolName, poolData);
   }
 
@@ -126,6 +130,8 @@ var Rotation = (function () {
       const sheet = getOrCreateSheet(ss, ROTATION_POOLS_SHEET, ['poolName', 'data']);
       pools.forEach(function(pool) {
         const { poolName, ...poolData } = pool;
+        poolData.updatedMonth = '手動修改';
+        poolData.updatedAt = new Date().toISOString();
         const rowIdx = findRowIndex(sheet, 'poolName', poolName);
         if (rowIdx !== -1) {
           sheet.getRange(rowIdx, 2).setValue(JSON.stringify(poolData));

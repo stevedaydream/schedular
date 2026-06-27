@@ -216,9 +216,18 @@
               :key="pool.poolName"
               class="border border-gray-200 rounded-lg p-3"
             >
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-sm font-semibold text-gray-700">{{ poolLabel(pool.poolName) }}</span>
-                <span class="text-xs text-gray-400">共 {{ pool.order.length }} 人</span>
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-sm font-bold text-slate-800">{{ poolLabel(pool.poolName) }}</span>
+                <span class="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-mono">共 {{ pool.order.length }} 人</span>
+              </div>
+              <div class="text-[10px] text-slate-400 mb-2 flex items-center justify-between border-b border-dashed border-slate-100 pb-1.5 select-none">
+                <span>適用月份：<strong class="text-slate-600 font-mono">{{ formatUpdatedMonth(pool.updatedMonth) }}</strong></span>
+                <span v-if="pool.updatedAt" :title="new Date(pool.updatedAt).toLocaleString('zh-TW')">
+                  最後更新：{{ formatTimeAgo(pool.updatedAt) }}
+                </span>
+                <span v-else>
+                  最後更新：歷史初始值
+                </span>
               </div>
 
               <div class="space-y-1">
@@ -881,13 +890,36 @@ async function loadRotation() {
         poolName: p.poolName,
         order: [...(p.order || [])],
         lastIndex: p.lastIndex ?? -1,
-        skipQueue: [...(p.skipQueue || [])]
+        skipQueue: [...(p.skipQueue || [])],
+        updatedMonth: p.updatedMonth || null,
+        updatedAt: p.updatedAt || null
       }))
   } catch (e) {
     rotationError.value = e.message
   } finally {
     rotationLoading.value = false
   }
+}
+
+function formatUpdatedMonth(val) {
+  if (!val) return '初始設定 (使用預設輪序)'
+  if (val.length === 6 && /^\d+$/.test(val)) {
+    return `${val.slice(0, 4)}年${parseInt(val.slice(4))}月`
+  }
+  return val
+}
+
+function formatTimeAgo(val) {
+  if (!val) return ''
+  const t = new Date(val)
+  if (isNaN(t.getTime())) return ''
+  const diff = Date.now() - t.getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return '剛剛'
+  if (mins < 60) return `${mins}分鐘前`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}小時前`
+  return `${t.getFullYear()}/${t.getMonth() + 1}/${t.getDate()}`
 }
 
 async function saveRotation() {

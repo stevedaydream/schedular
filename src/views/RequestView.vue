@@ -20,6 +20,48 @@
         <span v-if="isCurrentMonth" class="text-xs text-blue-500">（本月）</span>
       </div>
 
+      <!-- Monthly shift summary (預約月份的預計平均區間統計) -->
+      <div
+        v-if="monthSummary && !requestStore.loading"
+        class="mb-4 px-4 py-3 bg-white border border-gray-200 rounded-lg"
+      >
+        <div class="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
+          <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">本月排班預計（共 {{ monthSummary.activeUsers }} 人參與）</span>
+          <div class="flex items-baseline gap-1.5 cursor-help" :title="monthSummary.rangeD.formula">
+            <span class="w-5 h-5 inline-flex items-center justify-center text-xs font-bold bg-blue-100 text-blue-700 rounded">D</span>
+            <span class="font-semibold text-slate-800">{{ monthSummary.D }}</span>
+            <span class="text-slate-400 text-xs">班</span>
+            <span class="text-slate-500 text-xs border-b border-dotted border-slate-300 ml-1 font-mono">
+              {{ monthSummary.rangeD.text }}
+            </span>
+          </div>
+          <div class="flex items-baseline gap-1.5 cursor-help" :title="monthSummary.rangeN.formula">
+            <span class="w-5 h-5 inline-flex items-center justify-center text-xs font-bold bg-indigo-100 text-indigo-700 rounded">N</span>
+            <span class="font-semibold text-slate-800">{{ monthSummary.N }}</span>
+            <span class="text-slate-400 text-xs">班</span>
+            <span class="text-slate-500 text-xs border-b border-dotted border-slate-300 ml-1 font-mono">
+              {{ monthSummary.rangeN.text }}
+            </span>
+          </div>
+          <div class="flex items-baseline gap-1.5 cursor-help" :title="monthSummary.rangeOff.formula">
+            <span class="w-5 h-5 inline-flex items-center justify-center text-xs font-bold bg-gray-100 text-gray-500 rounded">Off</span>
+            <span class="font-semibold text-slate-800">{{ monthSummary.Off }}</span>
+            <span class="text-slate-400 text-xs">天</span>
+            <span class="text-slate-500 text-xs border-b border-dotted border-slate-300 ml-1 font-mono">
+              {{ monthSummary.rangeOff.text }}
+            </span>
+          </div>
+          <div class="flex items-baseline gap-1.5 cursor-help" :title="monthSummary.rangeW6Off.formula">
+            <span class="w-5 h-5 inline-flex items-center justify-center text-xs font-bold bg-green-100 text-green-700 rounded">W6</span>
+            <span class="font-semibold text-slate-800">{{ monthSummary.W6Off }}</span>
+            <span class="text-slate-400 text-xs">天</span>
+            <span class="text-slate-500 text-xs border-b border-dotted border-slate-300 ml-1 font-mono">
+              {{ monthSummary.rangeW6Off.text }}
+            </span>
+          </div>
+        </div>
+      </div>
+
       <!-- Locked notice -->
       <div
         v-if="scheduleStore.isLocked"
@@ -201,6 +243,7 @@ import { useShiftTypesStore } from '../stores/shiftTypes.js'
 import { useHoliday } from '../composables/useHoliday.js'
 import { useRotationProjection } from '../composables/useRotationProjection.js'
 import { getMonthDays, getDayType, DAY_NAMES, addMonths, getCurrentYYYYMM } from '../utils/dateHelper.js'
+import { getRequiredCount } from '../utils/shiftCalc.js'
 import NavBar from '../components/common/NavBar.vue'
 import MonthSwitcher from '../components/common/MonthSwitcher.vue'
 import ShiftCell from '../components/schedule/ShiftCell.vue'
@@ -232,6 +275,70 @@ const requestMonthLabel = computed(() => {
 
 const currentYYYYMM = getCurrentYYYYMM()
 const isCurrentMonth = computed(() => requestStore.currentMonth === currentYYYYMM)
+
+const currentMonthActiveUsers = computed(() => {
+  const excluded = scheduleStore.meta?.excludedUsers || []
+  return settingsStore.schedulingUsers.filter(u => !excluded.includes(u.userId))
+})
+
+const monthSummary = computed(() => {
+  const activeUsers = currentMonthActiveUsers.value.length
+  if (activeUsers === 0) return null
+
+  const s = settingsStore.settings
+  const dayInfos = getMonthDays(requestStore.currentMonth)
+  const holidayList = holidays.value || []
+
+  let D = 0, N = 0, Off = 0, W6Off = 0
+
+  const req = (shiftId, dayType) =>
+    shiftTypesStore.getRequiredCount(shiftId, dayType)
+    ?? getRequiredCount(shiftId, dayType, s)
+    ?? 0
+
+  dayInfos.forEach(({ dateStr, dayOfWeek }) => {
+    const dayType = getDayType(dateStr, holidayList)
+
+    D += req('D', dayType)
+    N += req('N', dayType)
+
+    // 該日所有「值勤」班別需求人數總和（排除 Off / W6Off 本身）
+    const totalRequired = shiftTypesStore.activeTypes
+      .filter(t => t.id !== 'Off' && t.id !== 'W6Off' && shiftTypesStore.isApplicable(t.id, dayType))
+      .reduce((sum, t) => sum + req(t.id, dayType), 0)
+
+    const remainder = Math.max(0, activeUsers - totalRequired)
+    // Off = 所有可休假天數（含六日假日）
+    Off += remainder
+    // W6Off = 星期六的可休假天數（含六+假日，以實際星期幾判斷）
+    if (dayOfWeek === 6) W6Off += remainder
+  })
+
+  const formatRange = (total, unit) => {
+    const base = Math.floor(total / activeUsers)
+    const remainder = total % activeUsers
+    if (remainder === 0) {
+      return {
+        text: `均 ${base} ${unit}/人`,
+        formula: `${total} ${unit} ÷ ${activeUsers} 人 = 每人整除 ${base} ${unit}`
+      }
+    }
+    const highVal = base + 1
+    const highCount = remainder
+    const lowCount = activeUsers - remainder
+    return {
+      text: `均 ${base}~${highVal}(${highCount}人) ${unit}/人`,
+      formula: `${total} ${unit} ÷ ${activeUsers} 人 = 每人基本 ${base} ${unit}，剩餘 ${remainder} ${unit} 由 ${highCount} 人分擔 (${highCount}人排 ${highVal} ${unit}，${lowCount}人排 ${base} ${unit})`
+    }
+  }
+  return {
+    activeUsers, D, N, Off, W6Off,
+    rangeD: formatRange(D, '班'),
+    rangeN: formatRange(N, '班'),
+    rangeOff: formatRange(Off, '天'),
+    rangeW6Off: formatRange(W6Off, '天')
+  }
+})
 
 const sortedUsers = computed(() =>
   [...settingsStore.schedulingUsers]

@@ -2,7 +2,7 @@
   <div class="min-h-screen bg-gray-50 print:bg-white">
     <NavBar class="print:hidden" />
 
-    <main class="max-w-full px-4 py-6 print:p-0">
+    <main class="max-w-full px-4 py-6 pb-28 print:p-0">
       <!-- Header controls -->
       <div class="flex flex-wrap items-center justify-between gap-4 mb-6 print:hidden">
         <div class="flex items-center gap-3">
@@ -140,6 +140,23 @@
             </svg>
             {{ showRequestOverlay ? '隱藏預約' : '顯示預約' }}
           </button>
+
+          <!-- 本月參與人員設定 -->
+          <div v-if="!scheduleStore.isLocked && !scheduleStore.isArchived" class="relative group">
+            <button
+              @click="openExclusionModal"
+              class="btn-secondary text-sm flex items-center gap-1.5"
+            >
+              <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+              </svg>
+              <span>本月人員 ({{ currentMonthActiveUsers.length }}人)</span>
+            </button>
+            <div class="tooltip-box w-64">
+              <p class="font-semibold mb-1">👥 本月排班參與人員</p>
+              <p>設定此月份實際要排班的人員名單，未勾選者在此月份會被排除於排班與配額分配之外。不影響其他月份。</p>
+            </div>
+          </div>
 
           <!-- Confirm requests -->
           <div v-if="!scheduleStore.isLocked && pendingRequests.length > 0" class="relative group">
@@ -281,25 +298,37 @@
       >
         <div class="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
           <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">本月預計</span>
-          <div class="flex items-baseline gap-1.5">
+          <div class="flex items-baseline gap-1.5 cursor-help" :title="monthSummary.rangeD.formula">
             <span class="w-5 h-5 inline-flex items-center justify-center text-xs font-bold bg-blue-100 text-blue-700 rounded">D</span>
-            <span class="font-semibold text-gray-800">{{ monthSummary.D }}</span>
-            <span class="text-gray-400 text-xs">班　均 {{ monthSummary.avgD }}/人</span>
+            <span class="font-semibold text-slate-800">{{ monthSummary.D }}</span>
+            <span class="text-slate-400 text-xs">班</span>
+            <span class="text-slate-500 text-xs border-b border-dotted border-slate-300 ml-1 font-mono">
+              {{ monthSummary.rangeD.text }}
+            </span>
           </div>
-          <div class="flex items-baseline gap-1.5">
+          <div class="flex items-baseline gap-1.5 cursor-help" :title="monthSummary.rangeN.formula">
             <span class="w-5 h-5 inline-flex items-center justify-center text-xs font-bold bg-indigo-100 text-indigo-700 rounded">N</span>
-            <span class="font-semibold text-gray-800">{{ monthSummary.N }}</span>
-            <span class="text-gray-400 text-xs">班　均 {{ monthSummary.avgN }}/人</span>
+            <span class="font-semibold text-slate-800">{{ monthSummary.N }}</span>
+            <span class="text-slate-400 text-xs">班</span>
+            <span class="text-slate-500 text-xs border-b border-dotted border-slate-300 ml-1 font-mono">
+              {{ monthSummary.rangeN.text }}
+            </span>
           </div>
-          <div class="flex items-baseline gap-1.5">
+          <div class="flex items-baseline gap-1.5 cursor-help" :title="monthSummary.rangeOff.formula">
             <span class="w-5 h-5 inline-flex items-center justify-center text-xs font-bold bg-gray-100 text-gray-500 rounded">Off</span>
-            <span class="font-semibold text-gray-800">{{ monthSummary.Off }}</span>
-            <span class="text-gray-400 text-xs">天　均 {{ monthSummary.avgOff }}/人</span>
+            <span class="font-semibold text-slate-800">{{ monthSummary.Off }}</span>
+            <span class="text-slate-400 text-xs">天</span>
+            <span class="text-slate-500 text-xs border-b border-dotted border-slate-300 ml-1 font-mono">
+              {{ monthSummary.rangeOff.text }}
+            </span>
           </div>
-          <div class="flex items-baseline gap-1.5">
+          <div class="flex items-baseline gap-1.5 cursor-help" :title="monthSummary.rangeW6Off.formula">
             <span class="w-5 h-5 inline-flex items-center justify-center text-xs font-bold bg-green-100 text-green-700 rounded">W6</span>
-            <span class="font-semibold text-gray-800">{{ monthSummary.W6Off }}</span>
-            <span class="text-gray-400 text-xs">天　均 {{ monthSummary.avgW6Off }}/人</span>
+            <span class="font-semibold text-slate-800">{{ monthSummary.W6Off }}</span>
+            <span class="text-slate-400 text-xs">天</span>
+            <span class="text-slate-500 text-xs border-b border-dotted border-slate-300 ml-1 font-mono">
+              {{ monthSummary.rangeW6Off.text }}
+            </span>
           </div>
         </div>
       </div>
@@ -817,6 +846,52 @@
       </div>
     </div>
 
+    <!-- 本月排班參與人員設定彈窗 -->
+    <div v-if="showExclusionModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+        <div class="flex items-center justify-between mb-3 border-b pb-2">
+          <h3 class="text-md font-bold text-slate-800 flex items-center gap-1.5">👥 本月排班人員設定</h3>
+          <button @click="showExclusionModal = false" class="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+        </div>
+        
+        <p class="text-[11px] text-slate-500 mb-3 leading-relaxed">
+          設定此月份（{{ scheduleStore.currentMonth.slice(0,4) }}年{{ parseInt(scheduleStore.currentMonth.slice(4)) }}月）實際排班名單。未勾選者在此月會排除於排班與配額分配之外。不影響其他月份與歷史紀錄。
+        </p>
+
+        <div class="max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-2.5 mb-4 space-y-1 bg-slate-50/50">
+          <label
+            v-for="u in settingsStore.schedulingUsers"
+            :key="u.userId"
+            class="flex items-center justify-between p-1.5 hover:bg-white hover:shadow-sm rounded border border-transparent hover:border-slate-100 transition-all cursor-pointer"
+          >
+            <span class="text-xs font-semibold text-slate-700 flex items-center gap-1">
+              <span v-if="u.code" class="font-mono bg-slate-200 text-slate-600 rounded px-1 text-[9px] scale-90">
+                {{ u.code }}
+              </span>
+              {{ u.name }}
+            </span>
+            <input
+              type="checkbox"
+              :value="u.userId"
+              v-model="tempIncludedUsers"
+              class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+          </label>
+        </div>
+
+        <div class="flex gap-2 justify-end">
+          <button @click="showExclusionModal = false" class="btn-secondary text-xs px-3 py-1">取消</button>
+          <button
+            @click="confirmExcludedUsers"
+            :disabled="savingExclusion"
+            class="btn-primary text-xs px-3 py-1"
+          >
+            <span>{{ savingExclusion ? '儲存中...' : '確認儲存' }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Auto Fill Preview Modal -->
     <div v-if="showAutoPreview" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
@@ -1003,8 +1078,21 @@ const confirmingRequests = ref(false)
 
 const _now = ref(Date.now())
 let _nowTimer = null
-onMounted(() => { _nowTimer = setInterval(() => { _now.value = Date.now() }, 30000) })
-onUnmounted(() => clearInterval(_nowTimer))
+
+function handleKeyDown(event) {
+  if (event.key === 'Escape' && activeBrush.value !== null) {
+    activeBrush.value = null
+  }
+}
+
+onMounted(() => {
+  _nowTimer = setInterval(() => { _now.value = Date.now() }, 30000)
+  window.addEventListener('keydown', handleKeyDown)
+})
+onUnmounted(() => {
+  clearInterval(_nowTimer)
+  window.removeEventListener('keydown', handleKeyDown)
+})
 
 const fetchedAgo = computed(() => {
   const t = scheduleStore.fetchedAt
@@ -1054,7 +1142,7 @@ const disputedCount = computed(() => {
 })
 
 const monthSummary = computed(() => {
-  const activeUsers = settingsStore.schedulingUsers.length
+  const activeUsers = currentMonthActiveUsers.value.length
   if (activeUsers === 0) return null
 
   const s = settingsStore.settings
@@ -1086,8 +1174,30 @@ const monthSummary = computed(() => {
     if (dayOfWeek === 6) W6Off += remainder
   })
 
-  const avg = (n) => (n / activeUsers).toFixed(1)
-  return { activeUsers, D, N, Off, W6Off, avgD: avg(D), avgN: avg(N), avgOff: avg(Off), avgW6Off: avg(W6Off) }
+  const formatRange = (total, unit) => {
+    const base = Math.floor(total / activeUsers)
+    const remainder = total % activeUsers
+    if (remainder === 0) {
+      return {
+        text: `均 ${base} ${unit}/人`,
+        formula: `${total} ${unit} ÷ ${activeUsers} 人 = 每人整除 ${base} ${unit}`
+      }
+    }
+    const highVal = base + 1
+    const highCount = remainder
+    const lowCount = activeUsers - remainder
+    return {
+      text: `均 ${base}~${highVal}(${highCount}人) ${unit}/人`,
+      formula: `${total} ${unit} ÷ ${activeUsers} 人 = 每人基本 ${base} ${unit}，剩餘 ${remainder} ${unit} 由 ${highCount} 人分擔 (${highCount}人排 ${highVal} ${unit}，${lowCount}人排 ${base} ${unit})`
+    }
+  }
+  return {
+    activeUsers, D, N, Off, W6Off,
+    rangeD: formatRange(D, '班'),
+    rangeN: formatRange(N, '班'),
+    rangeOff: formatRange(Off, '天'),
+    rangeW6Off: formatRange(W6Off, '天')
+  }
 })
 
 const health = computed(() => {
@@ -1127,6 +1237,46 @@ const transferableUsers = computed(() =>
     u => u.userId !== authStore.user?.userId && u.isActive !== false
   )
 )
+
+const currentMonthActiveUsers = computed(() => {
+  const excluded = scheduleStore.meta?.excludedUsers || []
+  return settingsStore.schedulingUsers.filter(u => !excluded.includes(u.userId))
+})
+
+const rotationStatus = computed(() => {
+  const locked = scheduleStore.isLocked
+  const hasRecord = !!scheduleStore.meta?.rotationRecord
+  const modified = Object.values(svResetModified.value).some(v => v)
+  
+  if (hasRecord) {
+    return {
+      label: '✓ 已結算存檔',
+      cls: 'bg-green-100 text-green-700 border-green-300'
+    }
+  }
+  if (locked) {
+    return {
+      label: '🔒 班表已鎖定',
+      cls: 'bg-gray-100 text-gray-500 border-gray-300'
+    }
+  }
+  if (modified) {
+    return {
+      label: '⚠️ 已修改未結算',
+      cls: 'bg-amber-100 text-amber-700 border-amber-300'
+    }
+  }
+  if (svOffPreview.value.length > 0) {
+    return {
+      label: '⚡ 已計算配額',
+      cls: 'bg-blue-100 text-blue-700 border-blue-200'
+    }
+  }
+  return {
+    label: '待計算',
+    cls: 'bg-slate-100 text-slate-600 border-slate-300'
+  }
+})
 
 const monthStatus = computed(() => {
   const locked = scheduleStore.isLocked
@@ -2149,6 +2299,41 @@ function svIsFullCycleEnd(st, userId) {
   if (svGetExtras(st) !== 0 || svOffPreview.value.length === 0) return false
   const order = svGetDisplayOrder(st)
   return order.length > 1 && order[order.length - 1] === userId
+}
+
+// ── Month Active Users Exclusion Modal Logic ──────────────────
+const showExclusionModal = ref(false)
+const tempIncludedUsers = ref([])
+const savingExclusion = ref(false)
+
+function openExclusionModal() {
+  const excluded = scheduleStore.meta?.excludedUsers || []
+  tempIncludedUsers.value = settingsStore.schedulingUsers
+    .filter(u => !excluded.includes(u.userId))
+    .map(u => u.userId)
+  showExclusionModal.value = true
+}
+
+async function confirmExcludedUsers() {
+  savingExclusion.value = true
+  try {
+    const allIds = settingsStore.schedulingUsers.map(u => u.userId)
+    const newExcluded = allIds.filter(id => !tempIncludedUsers.value.includes(id))
+    
+    const ok = await scheduleStore.batchSaveShifts({
+      shifts: [],
+      metaUpdates: { excludedUsers: newExcluded }
+    })
+    
+    if (ok) {
+      showExclusionModal.value = false
+      await scheduleStore.fetchSchedule(scheduleStore.currentMonth)
+    }
+  } catch (e) {
+    scheduleStore.error = e.message || '儲存人員排除設定失敗'
+  } finally {
+    savingExclusion.value = false
+  }
 }
 </script>
 

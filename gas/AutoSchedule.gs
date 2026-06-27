@@ -58,6 +58,9 @@ var AutoSchedule = (function () {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var settingsResult = Settings_.getSettings();
     var settings = settingsResult.success ? settingsResult.data : {};
+    if (body.autoScheduleRules) {
+      settings.autoScheduleRules = body.autoScheduleRules;
+    }
     var rules = parseRules(settings);
 
     var usersResult = Auth.getUsers();
@@ -70,6 +73,10 @@ var AutoSchedule = (function () {
     if (!schedResult.success) return { success: false, error: '無法取得班表' };
     var currentSchedule = schedResult.data.schedule || {};
     var meta = schedResult.data.meta || {};
+    var excludedUsers = meta.excludedUsers || [];
+    users = users.filter(function (u) {
+      return excludedUsers.indexOf(u.userId) === -1;
+    });
     var quotaOverrides = meta.quotaOverrides || {};
 
     var reqResult = Request.getRequests({ yyyyMM: yyyyMM });
