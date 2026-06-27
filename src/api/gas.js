@@ -32,7 +32,8 @@ async function gasGet(action, params = {}) {
   const response = await fetch(url.toString(), {
     method: 'GET',
     headers,
-    redirect: 'follow'
+    redirect: 'follow',
+    credentials: 'omit'
   })
 
   if (!response.ok) {
@@ -60,6 +61,7 @@ async function gasPost(action, data = {}) {
     method: 'POST',
     mode: 'cors',
     redirect: 'follow',
+    credentials: 'omit',
     headers: {
       'Content-Type': 'text/plain;charset=utf-8'
     },
