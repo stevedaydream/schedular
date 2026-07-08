@@ -28,105 +28,6 @@
             填入六日輪序中...
           </span>
 
-          <!-- Lock -->
-          <div v-if="!scheduleStore.isLocked" class="relative group">
-            <button
-              @click="handleLock"
-              class="btn-secondary flex items-center gap-2"
-              :disabled="scheduleStore.loading"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/>
-              </svg>
-              鎖定班表
-            </button>
-            <div class="tooltip-box w-60">
-              <p class="font-semibold mb-1">🔒 鎖定班表</p>
-              <p>確認本月排班後鎖定。鎖定後：</p>
-              <ul class="mt-1 space-y-0.5 list-disc list-inside">
-                <li>員工無法再提交預約</li>
-                <li>六日輪序進度寫入下月起點</li>
-                <li>班表進入唯讀模式</li>
-              </ul>
-            </div>
-          </div>
-
-          <!-- Unlock -->
-          <div v-else class="relative group">
-            <button
-              @click="handleUnlock"
-              class="btn-danger flex items-center gap-2"
-              :disabled="scheduleStore.loading"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/>
-              </svg>
-              解鎖班表
-            </button>
-            <div class="tooltip-box w-52">
-              <p class="font-semibold mb-1">🔓 解鎖班表</p>
-              <p>解除鎖定，允許繼續修改班表與接受員工預約。</p>
-              <p class="mt-1 text-yellow-300">⚠ 解鎖不會回退輪序進度。</p>
-            </div>
-          </div>
-
-          <!-- Reset weekends -->
-          <div v-if="!scheduleStore.isLocked" class="relative group">
-            <button
-              @click="showResetWeekendsConfirm = true"
-              :disabled="scheduleStore.loading || resettingWeekends"
-              class="btn-secondary text-sm flex items-center gap-1"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-              </svg>
-              {{ resettingWeekends ? '重排中...' : '重排六日輪序' }}
-            </button>
-            <div class="tooltip-box w-64">
-              <p class="font-semibold mb-1">🔄 重排六日輪序</p>
-              <p>清除本月週六／週日的 D、N 班，依目前輪序池重新填入。</p>
-              <p class="mt-1 text-gray-300">平日、假日及其他班別不受影響。</p>
-              <p class="mt-1 text-gray-300">使用時機：在輪序管理調整順序後套用。</p>
-              <hr class="border-gray-600 my-1.5"/>
-              <p class="text-gray-400 text-xs">六日輪序：決定週六日由誰上 D / N 班（點名制）。<br>與配額輪序獨立運作，不互相影響。</p>
-            </div>
-          </div>
-
-          <!-- Clear schedule -->
-          <div v-if="!scheduleStore.isLocked" class="relative group">
-            <button
-              @click="showClearConfirm = true"
-              :disabled="scheduleStore.loading"
-              class="btn-danger text-sm flex items-center gap-1"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-              </svg>
-              清除班表
-            </button>
-            <div class="tooltip-box w-56">
-              <p class="font-semibold mb-1">🗑 清除班表</p>
-              <p>清除本月全部班別，班表恢復空白。</p>
-              <p class="mt-1 text-yellow-300">⚠ 此操作無法復原。</p>
-              <p class="mt-1 text-gray-300">清除後六日 D/N 輪序將自動重新填入。</p>
-            </div>
-          </div>
-
-          <!-- Transfer scheduler -->
-          <div class="relative group">
-            <button
-              @click="showTransferModal = true"
-              class="btn-secondary text-sm"
-            >
-              移交排班者
-            </button>
-            <div class="tooltip-box w-56">
-              <p class="font-semibold mb-1">👤 移交排班者</p>
-              <p>將排班者權限轉移給其他人員。</p>
-              <p class="mt-1 text-yellow-300">⚠ 移交後您將失去排班功能。</p>
-            </div>
-          </div>
-
           <!-- Request overlay toggle -->
           <button
             @click="showRequestOverlay = !showRequestOverlay"
@@ -140,63 +41,6 @@
             </svg>
             {{ showRequestOverlay ? '隱藏預約' : '顯示預約' }}
           </button>
-
-          <!-- 本月參與人員設定 -->
-          <div v-if="!scheduleStore.isLocked && !scheduleStore.isArchived" class="relative group">
-            <button
-              @click="openExclusionModal"
-              class="btn-secondary text-sm flex items-center gap-1.5"
-            >
-              <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
-              </svg>
-              <span>本月人員 ({{ currentMonthActiveUsers.length }}人)</span>
-            </button>
-            <div class="tooltip-box w-64">
-              <p class="font-semibold mb-1">👥 本月排班參與人員</p>
-              <p>設定此月份實際要排班的人員名單，未勾選者在此月份會被排除於排班與配額分配之外。不影響其他月份。</p>
-            </div>
-          </div>
-
-          <!-- Confirm requests -->
-          <div v-if="!scheduleStore.isLocked && pendingRequests.length > 0" class="relative group">
-            <button
-              @click="handleConfirmRequests"
-              :disabled="confirmingRequests"
-              class="btn-secondary text-sm flex items-center gap-1.5"
-            >
-              {{ confirmingRequests ? '確認中...' : `確認 ${pendingRequests.length} 個預約` }}
-              <span v-if="disputedCount > 0" class="text-orange-500 font-medium">（{{ disputedCount }} 爭議）</span>
-            </button>
-            <div class="tooltip-box w-64">
-              <p class="font-semibold mb-1">✅ 確認員工預約</p>
-              <p>將員工提交的預約（無爭議部分）一鍵填入班表。</p>
-              <ul class="mt-1 space-y-0.5 list-disc list-inside text-gray-300">
-                <li>藍色格 = 待確認</li>
-                <li>橘色格 = 超額爭議，需手動處理</li>
-              </ul>
-            </div>
-          </div>
-
-          <!-- Auto fill -->
-          <div v-if="!scheduleStore.isLocked && !scheduleStore.isArchived" class="relative group">
-            <button
-              @click="handleAutoFill"
-              :disabled="scheduleStore.loading || autoFilling"
-              class="btn-secondary text-sm flex items-center gap-1.5"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-              </svg>
-              {{ autoFilling ? '計算中...' : '自動填入' }}
-            </button>
-            <div class="tooltip-box w-64">
-              <p class="font-semibold mb-1">⚡ 自動填入</p>
-              <p>依配額與規則自動填入剩餘空格。</p>
-              <p class="mt-1 text-gray-300">填入前會顯示預覽，確認後才寫入。</p>
-              <p class="mt-1 text-yellow-300">⚠ 請先完成六日輪序、假日、預約班別。</p>
-            </div>
-          </div>
 
           <!-- Export CSV -->
           <button
@@ -228,6 +72,35 @@
               <p class="mt-1 text-gray-300">選擇「另存為 PDF」可匯出電子檔。版面自動設為 A4 橫式。</p>
             </div>
           </div>
+
+          <!-- ⋯ 更多（次要／危險操作） -->
+          <div class="relative">
+            <button
+              @click="showMoreMenu = !showMoreMenu"
+              class="btn-secondary text-sm px-2.5"
+              title="更多操作"
+            >⋯</button>
+            <div v-if="showMoreMenu" class="fixed inset-0 z-30" @click="showMoreMenu = false"></div>
+            <div
+              v-if="showMoreMenu"
+              class="absolute right-0 top-full mt-1 z-40 w-44 bg-white border border-gray-200 rounded-lg shadow-lg py-1"
+            >
+              <button
+                @click="showMoreMenu = false; showTransferModal = true"
+                class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+              >
+                <span>👤</span>移交排班者
+              </button>
+              <button
+                v-if="!scheduleStore.isLocked"
+                @click="showMoreMenu = false; showClearConfirm = true"
+                :disabled="scheduleStore.loading"
+                class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+              >
+                <span>🗑</span>清除班表
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -250,44 +123,128 @@
         <span>班表已鎖定，僅可查看。如需修改請先解鎖。</span>
       </div>
 
-      <!-- Schedule health indicator -->
-      <div
-        v-if="health && !scheduleStore.loading"
-        class="mb-4 p-3 bg-white border border-gray-200 rounded-lg flex flex-wrap items-center justify-between gap-3 text-sm print:hidden"
-      >
-        <div class="flex items-center gap-4">
-          <span class="font-medium text-gray-700">
-            {{ scheduleStore.currentMonth.slice(0,4) }}年{{ scheduleStore.currentMonth.slice(4) }}月班表
-          </span>
-          <span class="flex items-center gap-1">
-            <span class="text-blue-600 font-semibold">● 完成度 {{ health.completionRate }}%</span>
-          </span>
-          <span v-if="health.anomalies.length" class="text-amber-600">
-            ⚠ {{ health.anomalies.length }} 處人力異常
-          </span>
-          <span v-if="health.overQuota.length" class="text-red-600">
-            ✗ {{ health.overQuota.length }} 人配額異常
-          </span>
-          <span v-if="!health.anomalies.length && !health.overQuota.length" class="text-green-600">
-            ✓ 全部正常
-          </span>
+      <!-- 排班步驟追蹤 -->
+      <div v-if="!scheduleStore.loading" class="mb-4 bg-white border border-gray-200 rounded-lg print:hidden">
+        <div class="px-4 pt-2.5 pb-1.5 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-3">
+            <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide">排班步驟</span>
+            <span class="text-sm font-medium text-gray-700">
+              {{ scheduleStore.currentMonth.slice(0,4) }}年{{ scheduleStore.currentMonth.slice(4) }}月班表
+            </span>
+          </div>
+          <span v-if="allStepsDone" class="text-xs text-green-600 font-medium">✓ 本月排班完成</span>
         </div>
-        <div class="flex gap-2">
-          <button
-            v-if="health.anomalies.length || health.overQuota.length"
-            @click="showHealthModal = true"
-            class="text-xs text-blue-600 hover:underline"
-          >
-            查看異常清單
-          </button>
-          <button
-            v-if="!scheduleStore.isLocked"
-            @click="handleLock"
-            class="btn-primary text-xs px-3 py-1"
-            :disabled="scheduleStore.loading"
-          >
-            確認鎖定
-          </button>
+
+        <!-- Step chips -->
+        <div class="px-4 pb-2 flex items-center gap-1 overflow-x-auto">
+          <template v-for="(step, i) in schedSteps" :key="step.key">
+            <span v-if="i > 0" class="text-gray-200 shrink-0 select-none">─</span>
+            <button
+              @click="selectedStepIdx = selectedStepIdx === i ? null : i"
+              :class="[
+                'shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs transition-colors',
+                step.status === 'done' ? 'bg-green-50 border-green-200 text-green-700'
+                  : step.status === 'half' ? 'bg-blue-50 border-blue-200 text-blue-700'
+                  : i === currentStepIdx ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold'
+                  : 'border-gray-200 text-gray-400 hover:text-gray-600',
+                expandedStepIdx === i ? 'ring-1 ring-blue-300' : ''
+              ]"
+            >
+              <span>{{ step.status === 'done' ? '✓' : STEP_NUMS[i] }}</span>
+              <span>{{ step.label }}</span>
+              <span v-if="step.badge" class="opacity-75">{{ step.badge }}</span>
+            </button>
+          </template>
+        </div>
+
+        <!-- Expanded step: summary + actions -->
+        <div
+          v-if="expandedStep"
+          class="mx-4 mb-3 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg flex flex-wrap items-center justify-between gap-2"
+        >
+          <span class="text-xs text-gray-600">
+            <strong class="text-gray-800">{{ STEP_NUMS[expandedStepIdx] }} {{ expandedStep.label }}</strong>
+            ：{{ expandedStep.summary }}
+          </span>
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <!-- ① 本月人員 -->
+            <button
+              v-if="expandedStep.key === 'members' && !scheduleStore.isLocked && !scheduleStore.isArchived"
+              @click="openExclusionModal"
+              class="btn-secondary text-xs px-2.5 py-1"
+            >設定本月人員</button>
+
+            <!-- ② 六日輪序 -->
+            <button
+              v-if="expandedStep.key === 'weekend' && !scheduleStore.isLocked"
+              @click="showResetWeekendsConfirm = true"
+              :disabled="scheduleStore.loading || resettingWeekends"
+              class="btn-secondary text-xs px-2.5 py-1"
+            >{{ resettingWeekends ? '重排中...' : '重排六日輪序' }}</button>
+
+            <!-- ③ 配額帶入 -->
+            <template v-if="expandedStep.key === 'quota' && !scheduleStore.isLocked">
+              <button
+                @click="svCalcOff"
+                :disabled="svOffLoading"
+                class="btn-secondary text-xs px-2.5 py-1"
+              >{{ svOffLoading ? '計算中...' : svResetApplied ? '重新計算並推進輪序' : '計算配額' }}</button>
+              <button
+                v-if="svOffPreview.length > 0 && !offLocked"
+                @click="svShowApplyConfirm = true"
+                :disabled="svOffApplying"
+                class="btn-primary text-xs px-2.5 py-1"
+              >{{ svOffApplying ? '帶入中...' : '帶入配額' }}</button>
+              <button
+                v-if="svOffPreview.length > 0 && !offLocked"
+                @click="svShowCommitConfirm = true"
+                :disabled="svOffCommitting"
+                class="btn-secondary text-xs px-2.5 py-1"
+              >{{ svOffCommitting ? '結算中...' : '結算' }}</button>
+            </template>
+
+            <!-- ④ 處理預約 -->
+            <button
+              v-if="expandedStep.key === 'requests' && !scheduleStore.isLocked && pendingRequests.length > 0"
+              @click="handleConfirmRequests"
+              :disabled="confirmingRequests"
+              class="btn-primary text-xs px-2.5 py-1"
+            >
+              {{ confirmingRequests ? '確認中...' : `確認 ${pendingRequests.length} 個預約` }}
+              <span v-if="disputedCount > 0" class="text-orange-200 font-medium">（{{ disputedCount }} 爭議）</span>
+            </button>
+
+            <!-- ⑤ 自動填入 -->
+            <button
+              v-if="expandedStep.key === 'fill' && !scheduleStore.isLocked && !scheduleStore.isArchived"
+              @click="handleAutoFill"
+              :disabled="scheduleStore.loading || autoFilling"
+              class="btn-primary text-xs px-2.5 py-1"
+            >{{ autoFilling ? '計算中...' : '⚡ 自動填入' }}</button>
+
+            <!-- ⑥ 檢查異常 -->
+            <button
+              v-if="expandedStep.key === 'check' && health && (health.anomalies.length || health.overQuota.length)"
+              @click="showHealthModal = true"
+              class="btn-secondary text-xs px-2.5 py-1"
+            >查看異常清單</button>
+
+            <!-- ⑦ 鎖定 -->
+            <template v-if="expandedStep.key === 'lock'">
+              <button
+                v-if="!scheduleStore.isLocked"
+                @click="handleLock"
+                :disabled="scheduleStore.loading"
+                class="btn-primary text-xs px-2.5 py-1"
+              >🔒 鎖定班表</button>
+              <button
+                v-else
+                @click="handleUnlock"
+                :disabled="scheduleStore.loading"
+                class="btn-danger text-xs px-2.5 py-1"
+              >解鎖班表</button>
+            </template>
+          </div>
         </div>
       </div>
 
@@ -1022,7 +979,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useScheduleStore } from '../stores/schedule.js'
 import { useSettingsStore } from '../stores/settings.js'
 import { useAuthStore } from '../stores/auth.js'
@@ -1242,6 +1199,93 @@ const currentMonthActiveUsers = computed(() => {
   const excluded = scheduleStore.meta?.excludedUsers || []
   return settingsStore.schedulingUsers.filter(u => !excluded.includes(u.userId))
 })
+
+// ── 排班步驟追蹤 ─────────────────────────────────────────────
+const STEP_NUMS = ['①', '②', '③', '④', '⑤', '⑥', '⑦']
+const showMoreMenu = ref(false)
+const selectedStepIdx = ref(null)   // 使用者手動點選的步驟；null = 跟隨當前進度
+
+watch(() => scheduleStore.currentMonth, () => {
+  selectedStepIdx.value = null
+  showMoreMenu.value = false
+})
+
+const schedSteps = computed(() => {
+  const locked = scheduleStore.isLocked
+  const weekendDone = !!scheduleStore.meta?.weekendFilled
+  const quotaCalced = svOffPreview.value.length > 0
+  const quotaApplied = offLocked.value
+  const settled = !!scheduleStore.meta?.rotationRecord
+  const pend = pendingRequests.value.length
+  const completion = health.value?.completionRate ?? 0
+  const anomalies = health.value?.anomalies.length || 0
+  const overQuota = health.value?.overQuota.length || 0
+  const anomalyCount = anomalies + overQuota
+  const memberCount = currentMonthActiveUsers.value.length
+
+  return [
+    {
+      key: 'members', label: '本月人員', badge: `${memberCount}人`,
+      status: 'done',
+      summary: `本月 ${memberCount} 人參與排班。未勾選者此月不排班、不佔配額，不影響其他月份。`
+    },
+    {
+      key: 'weekend', label: '六日輪序',
+      status: weekendDone ? 'done' : 'todo',
+      summary: weekendDone
+        ? '週六／週日 D、N 已依輪序填入。於輪序管理調整順序後可重排（平日與假日不受影響）。'
+        : '尚未填入週六／週日 D、N。切換到本月時會自動填入，也可手動重排。'
+    },
+    {
+      key: 'quota', label: '配額帶入',
+      status: (quotaApplied || settled) ? 'done' : quotaCalced ? 'half' : 'todo',
+      badge: settled ? '已結算' : quotaApplied ? '已帶入' : quotaCalced ? '已試算' : null,
+      summary: settled ? '配額已結算存檔，輪序紀錄可於下方備查。'
+        : quotaApplied ? '配額已帶入班表。'
+        : quotaCalced ? '已試算，尚未帶入班表或結算。'
+        : '依累計餘數試算本月 D／N／Off／W6Off 配額，輪序順序可在下方「配額輪序管理」面板調整。'
+    },
+    {
+      key: 'requests', label: '處理預約',
+      status: pend === 0 ? 'done' : 'todo',
+      badge: pend > 0 ? `${pend}待確認` : null,
+      summary: pend === 0
+        ? '沒有待處理的員工預約。'
+        : `${pend} 個預約待確認（藍色格）${disputedCount.value > 0 ? `，其中 ${disputedCount.value} 個超額爭議（橘色格）需手動處理` : ''}。`
+    },
+    {
+      key: 'fill', label: '自動填入',
+      status: completion >= 100 ? 'done' : 'todo',
+      badge: `${completion}%`,
+      summary: completion >= 100
+        ? '班表已全部填滿。'
+        : `完成度 ${completion}%。依配額與規則自動填入剩餘空格，填入前會先顯示預覽。建議先完成六日輪序、假日與預約班別。`
+    },
+    {
+      key: 'check', label: '檢查異常',
+      status: health.value ? (anomalyCount === 0 ? 'done' : 'todo') : 'todo',
+      badge: anomalyCount > 0 ? `${anomalyCount}異常` : null,
+      summary: anomalyCount === 0
+        ? '人力與配額皆正常。'
+        : `${anomalies} 處人力異常、${overQuota} 人配額異常，請檢視清單並修正。`
+    },
+    {
+      key: 'lock', label: '鎖定班表',
+      status: locked ? 'done' : 'todo',
+      summary: locked
+        ? '班表已鎖定（唯讀）。解鎖可繼續修改，但不會回退輪序進度。'
+        : '確認排班後鎖定：員工停止預約、六日輪序寫入下月起點、班表轉為唯讀。'
+    }
+  ]
+})
+
+const currentStepIdx = computed(() => {
+  const idx = schedSteps.value.findIndex(s => s.status !== 'done')
+  return idx === -1 ? schedSteps.value.length - 1 : idx
+})
+const expandedStepIdx = computed(() => selectedStepIdx.value ?? currentStepIdx.value)
+const expandedStep = computed(() => schedSteps.value[expandedStepIdx.value] || null)
+const allStepsDone = computed(() => schedSteps.value.every(s => s.status === 'done'))
 
 const rotationStatus = computed(() => {
   const locked = scheduleStore.isLocked
