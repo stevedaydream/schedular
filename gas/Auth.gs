@@ -7,6 +7,15 @@ var Auth = (function () {
   var JWT_SECRET_KEY = 'JWT_SECRET';
   var USERS_SHEET = 'Users';
 
+  // 既有 Users 分頁可能無 noNight 欄（功能新增前建立），動態補上欄位避免欄位錯位
+  function ensureNoNightColumn(sheet) {
+    if (!sheet || sheet.getLastColumn() === 0) return;
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    if (headers.indexOf('noNight') === -1) {
+      sheet.getRange(1, headers.length + 1).setValue('noNight');
+    }
+  }
+
   // ─── JWT ───────────────────────────────────────────────────────────────────
 
   function base64UrlEncode(str) {
@@ -166,7 +175,7 @@ function googleLogin(body) {
 
   // ─── User CRUD ─────────────────────────────────────────────────────────────
 
-  var USERS_HEADERS = ['userId', 'name', 'role', 'email', 'passwordHash', 'isActive', 'isSupport', 'sortOrder', 'code', 'noSchedule', 'poolEx'];
+  var USERS_HEADERS = ['userId', 'name', 'role', 'email', 'passwordHash', 'isActive', 'isSupport', 'sortOrder', 'code', 'noSchedule', 'noNight', 'poolEx'];
 
   // 欄位遷移：舊分頁缺少的欄位補到最後（如 poolEx）
   function ensureUserColumns(sheet) {
@@ -189,15 +198,17 @@ function googleLogin(body) {
 
   function truthy(v) { return v === true || v === 'true' || v === 'TRUE'; }
 
-  // 依人員狀態計算四池成員資格：啟用且參與排班，且未勾選該池「不值」
+  // 依人員狀態計算四池成員資格：啟用且參與排班，且未勾選該池「不值」；
+  // 禁夜班（noNight）者一併退出週六/週日 N 池（平日 N 由配額再分配處理）
   function computePoolEligibility(user) {
     const active = truthy(user.isActive) && !truthy(user.noSchedule);
+    const canNight = !truthy(user.noNight);
     const ex = parsePoolEx(user.poolEx);
     return {
       satD: active && !ex.satD,
-      satN: active && !ex.satN,
+      satN: active && canNight && !ex.satN,
       sunD: active && !ex.sunD,
-      sunN: active && !ex.sunN
+      sunN: active && canNight && !ex.sunN
     };
   }
 
@@ -205,6 +216,7 @@ function googleLogin(body) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(USERS_SHEET);
     if (!sheet) return { success: false, error: '找不到 Users 分頁' };
+    ensureNoNightColumn(sheet);
 
     const users = sheetToObjects(sheet).map(u => ({
       userId: u.userId,
@@ -216,6 +228,7 @@ function googleLogin(body) {
       sortOrder: parseInt(u.sortOrder) || 0,
       code: u.code || '',
       noSchedule: u.noSchedule === true || u.noSchedule === 'true' || u.noSchedule === 'TRUE',
+      noNight: u.noNight === true || u.noNight === 'true' || u.noNight === 'TRUE',
       poolEx: parsePoolEx(u.poolEx)
       // Note: passwordHash is NOT returned
     }));
@@ -224,7 +237,7 @@ function googleLogin(body) {
   }
 
   function addUser(body) {
-    const { name, email, passwordHash, role, isActive, isSupport, sortOrder, code, noSchedule, poolEx } = body;
+    const { name, email, passwordHash, role, isActive, isSupport, sortOrder, code, noSchedule, noNight, poolEx } = body;
     if (!name || !email) return { success: false, error: '姓名和 Email 為必填' };
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -255,6 +268,7 @@ function googleLogin(body) {
         sortOrder: sortOrder || 0,
         code: userCode,
         noSchedule: noSchedule || false,
+        noNight: noNight === true || noNight === 'true' ? true : false,
         poolEx: JSON.stringify(poolExObj)
       };
       sheet.appendRow(headers.map(function (h) { return rowObj[h] !== undefined ? rowObj[h] : ''; }));
@@ -262,7 +276,7 @@ function googleLogin(body) {
       // 依「不值」設定同步四個週末輪序池
       Rotation.syncUserPoolMembership(userId, computePoolEligibility(rowObj));
 
-      return { success: true, data: { userId, name, role: role || 'member', email, isActive: isActive !== undefined ? isActive : true, isSupport: !!isSupport, sortOrder: sortOrder || 0, code: userCode, noSchedule: !!noSchedule, poolEx: poolExObj } };
+      return { success: true, data: { userId, name, role: role || 'member', email, isActive: isActive !== undefined ? isActive : true, isSupport: !!isSupport, sortOrder: sortOrder || 0, code: userCode, noSchedule: !!noSchedule, noNight: !!(noNight === true || noNight === 'true'), poolEx: poolExObj } };
     } finally {
       lock.releaseLock();
     }
@@ -284,6 +298,7 @@ function googleLogin(body) {
     try {
       const sheet = ss.getSheetByName(USERS_SHEET);
       if (!sheet) return { success: false, error: '找不到 Users 分頁' };
+      ensureNoNightColumn(sheet);
 
       const rowIdx = findRowIndex(sheet, 'userId', userId);
       if (rowIdx === -1) return { success: false, error: '找不到此人員' };
@@ -291,7 +306,7 @@ function googleLogin(body) {
       const headers = ensureUserColumns(sheet);
       const row = sheet.getRange(rowIdx, 1, 1, headers.length).getValues()[0];
 
-      const { name, role, isActive, isSupport, sortOrder, passwordHash, code, noSchedule, poolEx } = body;
+      const { name, role, isActive, isSupport, sortOrder, passwordHash, code, noSchedule, noNight, poolEx } = body;
 
       const updates = {};
       if (name !== undefined) updates.name = name;
@@ -302,6 +317,7 @@ function googleLogin(body) {
       if (passwordHash !== undefined) updates.passwordHash = passwordHash;
       if (code !== undefined) updates.code = code;
       if (noSchedule !== undefined) updates.noSchedule = noSchedule === true || noSchedule === 'true' ? true : false;
+      if (noNight !== undefined) updates.noNight = noNight === true || noNight === 'true' ? true : false;
       if (poolEx !== undefined) updates.poolEx = JSON.stringify(parsePoolEx(poolEx));
 
       headers.forEach((h, i) => {
@@ -461,18 +477,19 @@ function googleLogin(body) {
         const isActive = u.isActive !== false && u.isActive !== 'false' && u.isActive !== 'FALSE';
         const isSupport = u.isSupport === true || u.isSupport === 'true' || u.isSupport === 'TRUE';
         const noSchedule = u.noSchedule === true || u.noSchedule === 'true' ? true : false;
+        const noNight = u.noNight === true || u.noNight === 'true' ? true : false;
         const poolExObj = parsePoolEx(u.poolEx);
         const rowObj = {
           userId: userId, name: u.name, role: u.role || 'member', email: u.email,
           passwordHash: u.passwordHash || '', isActive: isActive, isSupport: isSupport,
           sortOrder: u.sortOrder || 0, code: userCode, noSchedule: noSchedule,
-          poolEx: JSON.stringify(poolExObj)
+          noNight: noNight, poolEx: JSON.stringify(poolExObj)
         };
         sheet.appendRow(headers.map(function (h) { return rowObj[h] !== undefined ? rowObj[h] : ''; }));
         Rotation.syncUserPoolMembership(userId, computePoolEligibility(rowObj));
         existingEmails.add(u.email);
         added.push({ userId, name: u.name, email: u.email, role: u.role || 'member',
-          isActive, isSupport, sortOrder: u.sortOrder || 0, code: userCode, noSchedule, poolEx: poolExObj });
+          isActive, isSupport, sortOrder: u.sortOrder || 0, code: userCode, noSchedule, noNight, poolEx: poolExObj });
       });
 
       return { success: true, data: { added, errors } };

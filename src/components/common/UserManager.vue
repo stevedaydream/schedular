@@ -48,6 +48,7 @@
             <th class="text-left px-4 py-3 font-medium text-gray-700">角色</th>
             <th class="text-center px-4 py-3 font-medium text-gray-700">帳號狀態</th>
             <th class="text-center px-4 py-3 font-medium text-gray-700">支援模式</th>
+            <th class="text-center px-4 py-3 font-medium text-gray-700">禁夜班</th>
             <th class="text-center px-4 py-3 font-medium text-gray-700">輪序排除</th>
             <th class="text-center px-4 py-3 font-medium text-gray-700">排序</th>
             <th class="text-right px-4 py-3 font-medium text-gray-700">操作</th>
@@ -104,6 +105,15 @@
               <span v-else class="text-gray-200">—</span>
             </td>
             <td class="px-4 py-3 text-center">
+              <span
+                v-if="user.isActive !== false && user.isActive !== 'false'"
+                :class="(user.noNight === true || user.noNight === 'true') ? 'text-rose-500' : 'text-gray-300'"
+              >
+                {{ (user.noNight === true || user.noNight === 'true') ? '🌙' : '—' }}
+              </span>
+              <span v-else class="text-gray-200">—</span>
+            </td>
+            <td class="px-4 py-3 text-center">
               <span v-if="poolExTags(user).length === 0" class="text-gray-300">—</span>
               <span v-else class="inline-flex gap-1 flex-wrap justify-center">
                 <span
@@ -120,7 +130,7 @@
             </td>
           </tr>
           <tr v-if="settingsStore.users.length === 0">
-            <td colspan="10" class="text-center py-8 text-gray-400">尚無人員</td>
+            <td colspan="11" class="text-center py-8 text-gray-400">尚無人員</td>
           </tr>
         </tbody>
       </table>
@@ -173,6 +183,13 @@
             <label for="isSupport" class="text-sm text-gray-700">
               支援模式
               <span class="text-xs text-gray-400 ml-1">（僅參與 D/N/AM，不佔 Off 配額）</span>
+            </label>
+          </div>
+          <div v-if="form.isActive" class="flex items-center gap-2">
+            <input v-model="form.noNight" type="checkbox" id="noNight" class="rounded" />
+            <label for="noNight" class="text-sm text-gray-700">
+              禁止夜班
+              <span class="text-xs text-gray-400 ml-1">（不排夜班；平日 N 配額轉白班公平分給其他人，週末 N 輪序自動退出）</span>
             </label>
           </div>
           <div v-if="form.isActive && !form.noSchedule">
@@ -382,10 +399,10 @@ async function handleBatchRemove() {
 }
 
 // ── CSV Template ──────────────────────────────────────────────
-const CSV_HEADERS = ['姓名', '電子郵件', '密碼', '角色', '代號', '帳號啟用', '支援模式']
+const CSV_HEADERS = ['姓名', '電子郵件', '密碼', '角色', '代號', '帳號啟用', '支援模式', '禁止夜班']
 const CSV_TEMPLATE_ROWS = [
-  ['王小明', 'wang@example.com', 'password123', 'member', 'A', 'TRUE', 'FALSE'],
-  ['李大華', 'li@example.com', '', 'member', 'B', 'TRUE', 'FALSE']
+  ['王小明', 'wang@example.com', 'password123', 'member', 'A', 'TRUE', 'FALSE', 'FALSE'],
+  ['李大華', 'li@example.com', '', 'member', 'B', 'TRUE', 'FALSE', 'FALSE']
 ]
 
 function downloadTemplate() {
@@ -428,6 +445,7 @@ function parseImportCSV(text) {
   const codeCol     = col(['代號', 'code'])
   const activeCol   = col(['帳號啟用', 'isActive'])
   const supportCol  = col(['支援模式', 'isSupport'])
+  const noNightCol  = col(['禁止夜班', 'noNight'])
   const baseSort    = settingsStore.users.length
 
   if (nameCol === -1 || emailCol === -1) throw new Error('找不到「姓名」或「電子郵件」欄位')
@@ -451,6 +469,7 @@ function parseImportCSV(text) {
     const role = ROLE_MAP[rawRole] || 'member'
     const isActive = activeCol !== -1 ? !['FALSE', 'false', '否', '0', 'no'].includes(cols[activeCol]) : true
     const isSupport = supportCol !== -1 ? ['TRUE', 'true', '是', '1', 'yes'].includes(cols[supportCol]) : false
+    const noNight = noNightCol !== -1 ? ['TRUE', 'true', '是', '1', 'yes'].includes(cols[noNightCol]) : false
 
     if (!_error) seenEmails.add(email)
 
@@ -463,6 +482,7 @@ function parseImportCSV(text) {
       sortOrder: baseSort + (rows.length),   // 自動接在現有人員後面
       isActive,
       isSupport,
+      noNight,
       _error
     })
   }
@@ -501,7 +521,7 @@ async function confirmImport() {
         const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(row.password))
         passwordHash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
       }
-      return { name: row.name, email: row.email, passwordHash, role: row.role, code: row.code, sortOrder: row.sortOrder, isActive: row.isActive, isSupport: row.isSupport }
+      return { name: row.name, email: row.email, passwordHash, role: row.role, code: row.code, sortOrder: row.sortOrder, isActive: row.isActive, isSupport: row.isSupport, noNight: row.noNight }
     }))
     const result = await settingsStore.batchImportUsers(usersToSend)
     if (result) {
@@ -550,6 +570,7 @@ const form = reactive({
   isActive: true,
   isSupport: false,
   noSchedule: false,
+  noNight: false,
   sortOrder: 0,
   code: '',
   poolEx: emptyPoolEx()
@@ -604,6 +625,7 @@ function openAddForm() {
     isActive: true,
     isSupport: false,
     noSchedule: false,
+    noNight: false,
     sortOrder: settingsStore.users.length,
     code: nextAvailableCode(),
     poolEx: emptyPoolEx()
@@ -622,6 +644,7 @@ function openEditForm(user) {
     isActive: user.isActive !== false && user.isActive !== 'false',
     isSupport: user.isSupport === true || user.isSupport === 'true',
     noSchedule: user.noSchedule === true || user.noSchedule === 'true',
+    noNight: user.noNight === true || user.noNight === 'true',
     sortOrder: user.sortOrder || 0,
     code: user.code || '',
     poolEx: { ...emptyPoolEx(), ...(user.poolEx || {}) }
@@ -657,6 +680,7 @@ async function handleSubmit() {
       isActive: form.isActive,
       isSupport: form.isSupport,
       noSchedule: form.noSchedule,
+      noNight: form.noNight,
       sortOrder: form.sortOrder,
       code: form.code.toUpperCase(),
       poolEx: { ...form.poolEx },
@@ -679,6 +703,7 @@ async function handleSubmit() {
       isActive: form.isActive,
       isSupport: form.isSupport,
       noSchedule: form.noSchedule,
+      noNight: form.noNight,
       sortOrder: form.sortOrder,
       code: form.code.toUpperCase(),
       poolEx: { ...form.poolEx }
