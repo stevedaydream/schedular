@@ -203,93 +203,146 @@
           <div v-if="rotationError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">{{ rotationError }}</div>
           <div v-if="rotationSaveOk" class="mb-3 p-2 bg-green-50 border border-green-200 rounded text-sm text-green-700">✓ 輪序已儲存</div>
 
-          <p class="text-xs text-gray-500 mb-4">
-            ▶ 表示下次自動排班的起點。拖曳可調整輪序順序，點「設為起點」可立即調整下次起點。
-            <br>修改後需按「儲存輪序」才會生效。
-          </p>
-
           <div v-if="rotationLoading" class="text-center py-8 text-gray-400">載入中...</div>
 
-          <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div v-else>
+            <!-- Mode toggle -->
+            <div class="flex items-center justify-between flex-wrap gap-2 mb-4">
+              <p class="text-xs text-gray-500 flex-1 min-w-[220px]">
+                {{ beltMode === 'rotate'
+                  ? '整排捲動模式：最左＝隊首（下次輪值）。點箭頭或左右滑動履帶調整起點，順序不打散；點任一人可直接設為隊首。'
+                  : '自由拖曳模式：拖曳卡片可插入任意位置，各池獨立。' }}
+                <br>修改後需按「儲存輪序」才會生效；人員管理的「不值」勾選會自動同步池成員。
+              </p>
+              <div class="inline-flex bg-gray-100 border border-gray-200 rounded-lg p-0.5 gap-0.5">
+                <button
+                  type="button"
+                  @click="setBeltMode('rotate')"
+                  :class="['px-3 py-1.5 text-xs rounded-md transition-colors', beltMode === 'rotate' ? 'bg-blue-600 text-white font-semibold' : 'text-gray-500 hover:text-gray-700']"
+                >整排捲動</button>
+                <button
+                  type="button"
+                  @click="setBeltMode('free')"
+                  :class="['px-3 py-1.5 text-xs rounded-md transition-colors', beltMode === 'free' ? 'bg-blue-600 text-white font-semibold' : 'text-gray-500 hover:text-gray-700']"
+                >自由拖曳</button>
+              </div>
+            </div>
+
             <div
               v-for="pool in editingPools"
               :key="pool.poolName"
-              class="border border-gray-200 rounded-lg p-3"
+              class="border border-gray-200 rounded-lg p-3 mb-4"
             >
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-sm font-bold text-slate-800">{{ poolLabel(pool.poolName) }}</span>
-                <span class="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-mono">共 {{ pool.order.length }} 人</span>
-              </div>
-              <div class="text-[10px] text-slate-400 mb-2 flex items-center justify-between border-b border-dashed border-slate-100 pb-1.5 select-none">
-                <span>適用月份：<strong class="text-slate-600 font-mono">{{ formatUpdatedMonth(pool.updatedMonth) }}</strong></span>
-                <span v-if="pool.updatedAt" :title="new Date(pool.updatedAt).toLocaleString('zh-TW')">
-                  最後更新：{{ formatTimeAgo(pool.updatedAt) }}
-                </span>
-                <span v-else>
-                  最後更新：歷史初始值
-                </span>
-              </div>
-
-              <div class="space-y-1">
-                <div
-                  v-for="(userId, idx) in pool.order"
-                  :key="userId"
-                  :draggable="true"
-                  @dragstart="onPoolItemDragStart(pool.poolName, idx, $event)"
-                  @dragover.prevent="onPoolItemDragOver(pool.poolName, idx)"
-                  @drop.prevent="onPoolItemDrop(pool.poolName, idx)"
-                  @dragend="poolDragState = null"
-                  :class="[
-                    'flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-grab select-none group',
-                    isNextInPool(pool, idx) ? 'bg-blue-50 ring-1 ring-blue-300' : 'bg-gray-50 hover:bg-gray-100',
-                    poolDragState?.poolName === pool.poolName && poolDragState?.fromIdx === idx ? 'opacity-40' : ''
-                  ]"
-                >
-                  <!-- drag handle -->
-                  <span class="text-gray-300 text-xs">⠿</span>
-
-                  <!-- next indicator -->
-                  <span class="w-4 text-center text-xs">
-                    <span v-if="isNextInPool(pool, idx)" class="text-blue-600 font-bold">▶</span>
-                    <span v-else class="text-gray-300">{{ idx + 1 }}</span>
+              <!-- header -->
+              <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-sm font-bold text-slate-800">{{ poolLabel(pool.poolName) }}</span>
+                  <span class="text-[11px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-medium">
+                    輪序月份：{{ formatUpdatedMonth(pool.updatedMonth) }}
                   </span>
-
-                  <!-- code + name -->
-                  <span class="font-mono text-xs text-gray-400 w-6">{{ getUserCode(userId) }}</span>
-                  <span class="flex-1 text-gray-800">{{ getUserName(userId) }}</span>
-
-                  <!-- set as next button -->
-                  <button
-                    v-if="!isNextInPool(pool, idx)"
-                    @click="setPoolNext(pool, idx)"
-                    class="hidden group-hover:inline text-xs text-blue-600 hover:underline whitespace-nowrap"
-                  >設為起點</button>
-
-                  <!-- remove button -->
-                  <button
-                    @click="removeFromPool(pool, idx)"
-                    class="hidden group-hover:inline text-xs text-red-400 hover:text-red-600 ml-1"
-                    title="從輪序中移除"
-                  >✕</button>
+                  <span class="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-mono">共 {{ pool.order.length }} 人</span>
                 </div>
-
-                <div v-if="pool.order.length === 0" class="text-xs text-gray-400 py-2 text-center">尚無成員</div>
-
-                <!-- Add member dropdown -->
-                <div class="mt-2 flex items-center gap-1">
-                  <select
-                    :value="''"
-                    @change="e => { addToPool(pool, e.target.value); e.target.value = '' }"
-                    class="flex-1 text-xs border border-dashed border-gray-300 rounded px-2 py-1 text-gray-500 focus:outline-none focus:border-blue-400 bg-white"
-                  >
-                    <option value="" disabled>＋ 新增成員...</option>
-                    <option
-                      v-for="u in usersNotInPool(pool)"
-                      :key="u.userId"
-                      :value="u.userId"
-                    >{{ u.code ? u.code + ' · ' : '' }}{{ u.name }}</option>
-                  </select>
+                <div class="flex items-center gap-2">
+                  <span v-if="pool.updatedAt" class="text-[10px] text-slate-400" :title="new Date(pool.updatedAt).toLocaleString('zh-TW')">
+                    最後更新：{{ formatTimeAgo(pool.updatedAt) }}
+                  </span>
+                  <span v-else class="text-[10px] text-slate-400">最後更新：歷史初始值</span>
+                  <button @click="resetPool(pool)" type="button" class="text-xs text-gray-400 hover:text-red-500 underline">重設</button>
                 </div>
+              </div>
+
+              <!-- skip queue (優先補位) -->
+              <div v-if="(pool.skipQueue || []).length > 0" class="flex items-center gap-1.5 flex-wrap mb-1 mt-1.5">
+                <span class="text-[11px] text-amber-600 font-medium">優先補位（上次被跳過）：</span>
+                <span
+                  v-for="(uid, qi) in pool.skipQueue"
+                  :key="uid"
+                  class="inline-flex items-center gap-1 text-[11px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full"
+                >
+                  {{ getUserCode(uid) ? getUserCode(uid) + ' · ' : '' }}{{ getUserName(uid) }}
+                  <button @click="pool.skipQueue.splice(qi, 1)" class="text-amber-400 hover:text-red-500" title="移出優先補位">✕</button>
+                </span>
+              </div>
+
+              <!-- belt -->
+              <div class="flex items-center gap-1.5 mt-2">
+                <button
+                  v-if="beltMode === 'rotate'"
+                  type="button"
+                  @click="rotateLeft(pool)"
+                  :disabled="pool.order.length < 2"
+                  class="flex-shrink-0 w-8 h-8 rounded-full border border-gray-200 text-blue-600 hover:border-blue-400 disabled:opacity-25 flex items-center justify-center text-lg leading-none"
+                  title="隊首移到隊尾"
+                >‹</button>
+                <div
+                  class="relative flex-1 bg-gray-50 border border-gray-200 rounded-lg px-2 pt-2 pb-1 overflow-x-auto"
+                  :class="beltMode === 'rotate' ? (beltSwipe?.poolName === pool.poolName ? 'cursor-grabbing' : 'cursor-grab') : ''"
+                  style="touch-action: pan-y;"
+                  @pointerdown="onWrapPointerDown(pool, $event)"
+                  @pointermove="onWrapPointerMove(pool, $event)"
+                  @pointerup="onWrapPointerEnd"
+                  @pointercancel="onWrapPointerEnd"
+                >
+                  <div class="flex gap-2 min-h-[60px]" :data-belt="pool.poolName">
+                    <div
+                      v-for="(uid, si) in beltSeq(pool)"
+                      :key="uid"
+                      data-pill
+                      class="flex flex-col items-center gap-0.5 flex-shrink-0 select-none w-12"
+                      :class="[
+                        beltMode === 'free' ? 'cursor-grab' : 'cursor-pointer',
+                        beltDrag?.poolName === pool.poolName && beltDrag?.idx === si ? 'opacity-50' : ''
+                      ]"
+                      :style="beltMode === 'free' ? 'touch-action: none;' : ''"
+                      @pointerdown="onPillPointerDown(pool, si, $event)"
+                      @pointermove="onPillPointerMove(pool, $event)"
+                      @pointerup="onPillPointerUp($event)"
+                      @click="onPillClick(pool, si)"
+                    >
+                      <span class="text-[10px] font-mono" :class="si === 0 ? 'text-blue-600 font-bold' : 'text-gray-400'">
+                        {{ si === 0 ? '隊首' : si + 1 }}
+                      </span>
+                      <span
+                        class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-mono font-bold text-white shadow"
+                        :style="`background:${personColor(uid)}`"
+                      >{{ getUserCode(uid) || getUserName(uid).slice(0, 1) }}</span>
+                      <span class="text-[10px] text-gray-500 truncate max-w-[48px]">{{ getUserName(uid) }}</span>
+                      <button
+                        v-if="beltMode === 'free'"
+                        @click.stop="removeFromBelt(pool, si)"
+                        class="text-[10px] text-red-300 hover:text-red-500"
+                        title="從輪序中移除"
+                      >✕</button>
+                    </div>
+                    <div v-if="pool.order.length === 0" class="text-xs text-gray-400 py-3">
+                      尚無成員（請至人員管理檢查啟用狀態與「不值」設定）
+                    </div>
+                  </div>
+                </div>
+                <button
+                  v-if="beltMode === 'rotate'"
+                  type="button"
+                  @click="rotateRight(pool)"
+                  :disabled="pool.order.length < 2"
+                  class="flex-shrink-0 w-8 h-8 rounded-full border border-gray-200 text-blue-600 hover:border-blue-400 disabled:opacity-25 flex items-center justify-center text-lg leading-none"
+                  title="隊尾移到隊首"
+                >›</button>
+              </div>
+
+              <!-- Add member dropdown -->
+              <div class="mt-2 flex items-center gap-1">
+                <select
+                  :value="''"
+                  @change="e => { addToPool(pool, e.target.value); e.target.value = '' }"
+                  class="flex-1 text-xs border border-dashed border-gray-300 rounded px-2 py-1 text-gray-500 focus:outline-none focus:border-blue-400 bg-white"
+                >
+                  <option value="" disabled>＋ 新增成員...</option>
+                  <option
+                    v-for="u in usersNotInPool(pool)"
+                    :key="u.userId"
+                    :value="u.userId"
+                  >{{ u.code ? u.code + ' · ' : '' }}{{ u.name }}</option>
+                </select>
               </div>
             </div>
           </div>
@@ -322,7 +375,7 @@
             </button>
             <button
               v-if="previewResult.length > 0"
-              @click="previewResult = []"
+              @click="clearPreview"
               class="btn-secondary text-sm"
             >清除</button>
           </div>
@@ -332,6 +385,9 @@
           <div v-if="previewResult.length > 0">
             <div class="text-xs text-gray-500 mb-2">
               {{ previewYear }}年{{ previewMonthNum }}月　共 {{ previewResult.length }} 個六日／假日
+              <span class="ml-2 text-gray-400">
+                輪序起點來源：{{ previewBase ? formatUpdatedMonth(previewBase) + '的排班結果' : 'RotationPools 目前狀態' }}
+              </span>
             </div>
             <div class="overflow-x-auto border border-gray-200 rounded">
               <table class="w-full text-sm">
@@ -384,6 +440,42 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+
+            <!-- 月底交接狀態 -->
+            <div v-if="previewCarry" class="mt-4 pt-3 border-t border-dashed border-gray-200">
+              <div class="text-xs font-semibold text-gray-600 mb-2">
+                月底交接狀態（{{ previewYear }}年{{ previewMonthNum }}月結束後，即下月輪序起點）
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div
+                  v-for="poolName in USED_POOLS"
+                  :key="poolName"
+                  class="border border-gray-200 rounded-lg p-2.5"
+                >
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-xs font-bold text-slate-700">{{ poolLabel(poolName) }}</span>
+                    <span v-if="carrySeq(previewCarry[poolName]).length > 0" class="text-[11px] text-blue-600 font-medium">
+                      下月隊首：{{ getUserName(carrySeq(previewCarry[poolName])[0]) }}
+                    </span>
+                  </div>
+                  <div v-if="carrySeq(previewCarry[poolName]).length > 0" class="flex items-center gap-1 flex-wrap">
+                    <template v-for="(uid, ci) in carrySeq(previewCarry[poolName])" :key="uid">
+                      <span v-if="ci > 0" class="text-gray-300 text-[10px]">→</span>
+                      <span
+                        class="w-6 h-6 rounded-full inline-flex items-center justify-center text-[10px] font-mono font-bold text-white"
+                        :class="ci === 0 ? 'ring-2 ring-blue-300' : ''"
+                        :style="`background:${personColor(uid)}`"
+                        :title="getUserName(uid)"
+                      >{{ getUserCode(uid) || getUserName(uid).slice(0, 1) }}</span>
+                    </template>
+                  </div>
+                  <div v-else class="text-[11px] text-gray-400">無成員</div>
+                  <div v-if="(previewCarry[poolName]?.skipQueue || []).length > 0" class="mt-1.5 text-[11px] text-amber-600">
+                    優先補位：{{ previewCarry[poolName].skipQueue.map(uid => getUserName(uid)).join('、') }}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -843,7 +935,13 @@ const rotationSaving = ref(false)
 const rotationError = ref(null)
 const rotationSaveOk = ref(false)
 const editingPools = ref([])
-const poolDragState = ref(null) // { poolName, fromIdx }
+
+// ── 履帶佇列狀態 ──────────────────────────────────────────────
+const BELT_PALETTE = ['#e0a94c', '#2fbf9f', '#7c9ce0', '#d9718c', '#8fbf6c', '#c98fe0', '#4fb8d9', '#e0855c']
+const beltMode = ref('rotate')          // 'rotate' = 整排捲動 | 'free' = 自由拖曳
+const beltDrag = ref(null)              // { poolName, idx } 自由拖曳中
+const beltSwipe = ref(null)             // { poolName, startX, steps, moved } 整排滑動中
+const ROTATE_STEP_PX = 50
 
 const USED_POOLS = ['satD', 'satN', 'sunD', 'sunN']
 const POOL_LABELS = {
@@ -865,16 +963,132 @@ function getUserCode(userId) {
   return settingsStore.users.find(u => u.userId === userId)?.code || ''
 }
 
-function isNextInPool(pool, idx) {
-  const next = ((pool.lastIndex ?? -1) + 1) % Math.max(pool.order.length, 1)
-  return idx === next
+function personColor(userId) {
+  const sorted = [...settingsStore.users].sort((a, b) => (parseInt(a.sortOrder) || 0) - (parseInt(b.sortOrder) || 0))
+  const idx = sorted.findIndex(u => u.userId === userId)
+  return BELT_PALETTE[(idx === -1 ? 0 : idx) % BELT_PALETTE.length]
 }
 
-function setPoolNext(pool, idx) {
-  // lastIndex is the one BEFORE next, so set lastIndex = idx - 1
-  pool.lastIndex = (idx - 1 + pool.order.length) % pool.order.length
-  // Edge case: if idx === 0, lastIndex should be order.length - 1
-  if (idx === 0) pool.lastIndex = pool.order.length - 1
+// 履帶顯示序列：從隊首（lastIndex+1）起旋轉排列，最左＝下次輪值
+function beltSeq(pool) {
+  const len = pool.order.length
+  if (len === 0) return []
+  const next = ((pool.lastIndex ?? -1) + 1) % len
+  return pool.order.map((_, i) => pool.order[(next + i) % len])
+}
+
+function rotateLeft(pool) {   // 隊首移到隊尾
+  const len = pool.order.length
+  if (len < 2) return
+  pool.lastIndex = ((pool.lastIndex ?? -1) + 1) % len
+}
+
+function rotateRight(pool) {  // 隊尾移到隊首
+  const len = pool.order.length
+  if (len < 2) return
+  pool.lastIndex = ((pool.lastIndex ?? -1) - 1 + len) % len
+}
+
+function setBeltMode(mode) {
+  if (mode === 'free' && beltMode.value !== 'free') {
+    // 進入自由拖曳前先正規化：order 依目前顯示序列重排、隊首歸位到 index 0
+    editingPools.value.forEach(pool => {
+      pool.order = beltSeq(pool)
+      pool.lastIndex = -1
+    })
+  }
+  beltMode.value = mode
+  beltDrag.value = null
+  beltSwipe.value = null
+}
+
+// 整排捲動：點任一人設為隊首（滑動後不觸發）
+function onPillClick(pool, si) {
+  if (beltMode.value !== 'rotate' || si === 0) return
+  if (beltSwipe.value?.moved || beltDrag.value) return
+  const len = pool.order.length
+  const next = ((pool.lastIndex ?? -1) + 1) % len
+  const origIdx = (next + si) % len
+  pool.lastIndex = (origIdx - 1 + len) % len
+}
+
+// ── 整排捲動：履帶滑動 ────────────────────────────────────────
+function onWrapPointerDown(pool, e) {
+  if (beltMode.value !== 'rotate' || pool.order.length < 2) return
+  beltSwipe.value = { poolName: pool.poolName, startX: e.clientX, steps: 0, moved: false }
+  e.currentTarget.setPointerCapture(e.pointerId)
+}
+
+function onWrapPointerMove(pool, e) {
+  const s = beltSwipe.value
+  if (!s || s.poolName !== pool.poolName) return
+  const delta = e.clientX - s.startX
+  if (Math.abs(delta) > 4) s.moved = true
+  const target = Math.trunc(delta / ROTATE_STEP_PX)
+  while (s.steps < target) { rotateRight(pool); s.steps++ }
+  while (s.steps > target) { rotateLeft(pool); s.steps-- }
+}
+
+function onWrapPointerEnd() {
+  // 延遲清除，讓 click 事件仍能讀到 moved 旗標判斷是否為滑動
+  const s = beltSwipe.value
+  if (s && s.moved) {
+    setTimeout(() => { beltSwipe.value = null }, 0)
+  } else {
+    beltSwipe.value = null
+  }
+}
+
+// ── 自由拖曳：pointer 事件（支援觸控）────────────────────────
+function onPillPointerDown(pool, si, e) {
+  if (beltMode.value !== 'free') return
+  beltDrag.value = { poolName: pool.poolName, idx: si }
+  e.currentTarget.setPointerCapture(e.pointerId)
+}
+
+function onPillPointerMove(pool, e) {
+  const drag = beltDrag.value
+  if (!drag || drag.poolName !== pool.poolName) return
+  const belt = e.target.closest(`[data-belt="${pool.poolName}"]`)
+  if (!belt) return
+  const pills = [...belt.querySelectorAll('[data-pill]')]
+  const otherMids = pills
+    .filter((_, i) => i !== drag.idx)
+    .map(p => { const r = p.getBoundingClientRect(); return r.left + r.width / 2 })
+  const newIdx = otherMids.filter(m => e.clientX > m).length
+  if (newIdx !== drag.idx) {
+    // 自由模式下 order 已正規化（lastIndex = -1），顯示索引即 order 索引
+    const [moved] = pool.order.splice(drag.idx, 1)
+    pool.order.splice(newIdx, 0, moved)
+    drag.idx = newIdx
+  }
+}
+
+function onPillPointerUp(e) {
+  if (beltDrag.value) {
+    setTimeout(() => { beltDrag.value = null }, 0)
+  }
+}
+
+function removeFromBelt(pool, si) {
+  // 僅自由模式可見（lastIndex = -1），顯示索引即 order 索引
+  const [removed] = pool.order.splice(si, 1)
+  pool.skipQueue = (pool.skipQueue || []).filter(id => id !== removed)
+  if (pool.order.length === 0) pool.lastIndex = -1
+}
+
+function resetPool(pool) {
+  // 依人員管理現況重建：啟用、參與排班、未勾選該池「不值」，按顯示順序
+  pool.order = settingsStore.users
+    .filter(u =>
+      (u.isActive === true || u.isActive === 'true' || u.isActive === 'TRUE') &&
+      !(u.noSchedule === true || u.noSchedule === 'true') &&
+      !(u.poolEx && u.poolEx[pool.poolName])
+    )
+    .sort((a, b) => (parseInt(a.sortOrder) || 0) - (parseInt(b.sortOrder) || 0))
+    .map(u => u.userId)
+  pool.lastIndex = -1
+  pool.skipQueue = []
 }
 
 async function loadRotation() {
@@ -946,38 +1160,6 @@ async function saveRotation() {
   }
 }
 
-// Pool item drag-to-reorder
-function onPoolItemDragStart(poolName, fromIdx, event) {
-  poolDragState.value = { poolName, fromIdx }
-  event.dataTransfer.effectAllowed = 'move'
-}
-
-function onPoolItemDragOver(poolName, toIdx) {
-  if (!poolDragState.value || poolDragState.value.poolName !== poolName) return
-  if (poolDragState.value.fromIdx === toIdx) return
-  const pool = editingPools.value.find(p => p.poolName === poolName)
-  if (!pool) return
-  const arr = pool.order
-  const [moved] = arr.splice(poolDragState.value.fromIdx, 1)
-  arr.splice(toIdx, 0, moved)
-  poolDragState.value.fromIdx = toIdx
-}
-
-function onPoolItemDrop(poolName, toIdx) {
-  poolDragState.value = null
-}
-
-function removeFromPool(pool, idx) {
-  const wasNext = isNextInPool(pool, idx)
-  pool.order.splice(idx, 1)
-  // Adjust lastIndex if needed
-  if (pool.order.length === 0) {
-    pool.lastIndex = -1
-  } else if (idx <= pool.lastIndex) {
-    pool.lastIndex = Math.max(-1, pool.lastIndex - 1)
-  }
-}
-
 function addToPool(pool, userId) {
   if (!userId || pool.order.includes(userId)) return
   pool.order.push(userId)
@@ -1004,17 +1186,36 @@ const previewYearOptions = computed(() => {
 const previewLoading = ref(false)
 const previewError = ref(null)
 const previewResult = ref([])
+const previewCarry = ref(null)   // 推算後各池月底狀態
+const previewBase = ref(null)    // 輪序起點來源月份（yyyyMM 或 null）
+
+function clearPreview() {
+  previewResult.value = []
+  previewCarry.value = null
+  previewBase.value = null
+}
+
+// 月底交接顯示序列：從下月隊首起旋轉排列
+function carrySeq(pool) {
+  const len = pool?.order?.length || 0
+  if (len === 0) return []
+  const next = ((pool.lastIndex ?? -1) + 1) % len
+  return pool.order.map((_, i) => pool.order[(next + i) % len])
+}
 
 async function runPreview() {
   previewError.value = null
-  previewResult.value = []
+  clearPreview()
   previewLoading.value = true
   try {
     const mm = String(previewMonthNum.value).padStart(2, '0')
     const yyyyMM = `${previewYear.value}${mm}`
     // Ensure users are loaded so names resolve
     if (settingsStore.users.length === 0) await settingsStore.fetchUsers()
-    previewResult.value = await projectMonth(yyyyMM)
+    const { assignments, finalPools, baseMonth } = await projectMonth(yyyyMM)
+    previewResult.value = assignments
+    previewCarry.value = finalPools
+    previewBase.value = baseMonth
   } catch (e) {
     previewError.value = e.message || '推算失敗'
   } finally {

@@ -23,19 +23,21 @@ export const ROTATION_POOLS = [
 
 /**
  * 取得下一個輪序對象
+ * 跳過語意：被跳過的人（撞班）由呼叫端寫入 skipQueue，下次該池優先補回，
+ * 不會因為撞班而整輪輪空（原地等下次）。
  * @param {Object} pool - { poolName, order, lastIndex, skipQueue }
  * @param {string[]} skipIds - 本次需跳過的 userId（已排班）
- * @returns {{ userId: string, newIndex: number }}
+ * @returns {{ userId: string, newIndex?: number, skipped?: string[], fromSkipQueue?: boolean, skipQueueIndex?: number }}
  */
 export function getNextInPool(pool, skipIds = []) {
   const { order, lastIndex, skipQueue } = pool
   if (!order || order.length === 0) return null
 
-  // Check skip queue first
+  // Skip queue first：掃描第一位本次可值且仍在池內的人
   if (skipQueue && skipQueue.length > 0) {
-    const firstInQueue = skipQueue[0]
-    if (!skipIds.includes(firstInQueue)) {
-      return { userId: firstInQueue, fromSkipQueue: true }
+    const qIdx = skipQueue.findIndex(id => !skipIds.includes(id) && order.includes(id))
+    if (qIdx !== -1) {
+      return { userId: skipQueue[qIdx], fromSkipQueue: true, skipQueueIndex: qIdx }
     }
   }
 
@@ -43,12 +45,14 @@ export function getNextInPool(pool, skipIds = []) {
   const startIdx = ((lastIndex ?? -1) + 1) % order.length
   let idx = startIdx
   let attempts = 0
+  const skipped = []
 
   while (attempts < order.length) {
     const userId = order[idx]
     if (!skipIds.includes(userId)) {
-      return { userId, newIndex: idx }
+      return { userId, newIndex: idx, skipped }
     }
+    skipped.push(userId)
     idx = (idx + 1) % order.length
     attempts++
   }
@@ -216,9 +220,16 @@ export function runAutoSchedule(users, holidays, settings, pools, yyyyMM) {
     if (!result) return null
 
     if (result.fromSkipQueue) {
-      pool.skipQueue = pool.skipQueue.slice(1)
+      pool.skipQueue = (pool.skipQueue || []).filter((_, i) => i !== result.skipQueueIndex)
     } else {
       pool.lastIndex = result.newIndex
+      // 被跳過的人寫入 skipQueue，下次該池優先補回（原地等下次）
+      if (result.skipped && result.skipped.length > 0) {
+        pool.skipQueue = pool.skipQueue || []
+        result.skipped.forEach(id => {
+          if (!pool.skipQueue.includes(id)) pool.skipQueue.push(id)
+        })
+      }
     }
     return result.userId
   }

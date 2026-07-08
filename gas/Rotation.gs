@@ -145,6 +145,56 @@ var Rotation = (function () {
     }
   }
 
+  // 由人員設定（poolEx）自動同步成員的四個週末輪序池
+  var USER_SYNC_POOLS = ['satD', 'satN', 'sunD', 'sunN'];
+
+  /**
+   * 依人員設定同步單一使用者在四個週末池的成員資格。
+   * 呼叫端必須已持有 ScriptLock（addUser / updateUser / removeUser 皆在鎖內呼叫）。
+   * @param {string} userId
+   * @param {Object} eligibleByPool - { satD: bool, satN: bool, sunD: bool, sunN: bool }，true = 應在池內
+   */
+  function syncUserPoolMembership(userId, eligibleByPool) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(ROTATION_POOLS_SHEET);
+    if (!sheet) return;
+
+    USER_SYNC_POOLS.forEach(function (poolName) {
+      const rowIdx = findRowIndex(sheet, 'poolName', poolName);
+      if (rowIdx === -1) return;
+
+      var pool;
+      try {
+        pool = JSON.parse(sheet.getRange(rowIdx, 2).getValue() || '{}');
+      } catch (e) { return; }
+      pool.order = pool.order || [];
+      pool.skipQueue = pool.skipQueue || [];
+      if (pool.lastIndex === undefined || pool.lastIndex === null) pool.lastIndex = -1;
+
+      const inPoolIdx = pool.order.indexOf(userId);
+      const shouldBeIn = !!(eligibleByPool && eligibleByPool[poolName]);
+      var changed = false;
+
+      if (!shouldBeIn && inPoolIdx !== -1) {
+        // 移除：同步調整 lastIndex，並自 skipQueue 清掉
+        pool.order.splice(inPoolIdx, 1);
+        if (pool.order.length === 0) pool.lastIndex = -1;
+        else if (inPoolIdx <= pool.lastIndex) pool.lastIndex = Math.max(-1, pool.lastIndex - 1);
+        pool.skipQueue = pool.skipQueue.filter(function (id) { return id !== userId; });
+        changed = true;
+      } else if (shouldBeIn && inPoolIdx === -1) {
+        // 補回：接在隊尾
+        pool.order.push(userId);
+        changed = true;
+      }
+
+      if (changed) {
+        pool.updatedAt = new Date().toISOString();
+        sheet.getRange(rowIdx, 2).setValue(JSON.stringify(pool));
+      }
+    });
+  }
+
   // ─── 班別配額輪序 (D / N / Off) ────────────────────────────────────────────
 
   var BALANCE_FIELDS = ['D', 'N', 'Off', 'W6Off'];
@@ -385,6 +435,7 @@ var Rotation = (function () {
 
   return {
     getRotationState, initializePools, updatePool, saveRotationPool, saveAllRotationPools, resetPools,
+    syncUserPoolMembership,
     getShiftBalance, applyMonthlyShiftQuota, commitShiftBalance
   };
 

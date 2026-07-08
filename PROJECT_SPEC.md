@@ -190,6 +190,8 @@ const ROTATION_POOLS = [
 1. 每月從上月 `lastIndex + 1` 開始
 2. 國定假日落在週六/週日 → 走假日輪序，週末輪序**跳過不消耗索引**
 3. D/N 餘數分配：總量 % 人數 的餘數，依輪序順序各加1
+4. **跳過補回**：因撞班（同日已排其他班）被跳過的人寫入 `skipQueue`，該池下次取人時優先補回（掃描 skipQueue 第一位當次可值者），不會整輪輪空
+5. **池成員自動同步**：人員的 `poolEx`（不值設定）、啟用狀態、不參與排班變更時，GAS 端自動同步 satD/satN/sunD/sunN 四池成員（排除即移出並調整 lastIndex；恢復即補回隊尾）
 
 ### Off 配額計算
 ```
@@ -336,6 +338,7 @@ const ROTATION_POOLS = [
 | passwordHash | SHA-256 雜湊（帳密登入用） |
 | isActive | 是否參與排班 |
 | sortOrder | 顯示順序 |
+| poolEx | JSON `{"satD":true,...}`，四個週末輪序池的「不值」排除設定 |
 
 ### `Settings` 分頁
 | 欄位 | 說明 |
@@ -359,6 +362,13 @@ const ROTATION_POOLS = [
   "skipQueue": []
 }
 ```
+
+### 輪序管理 UI（AdminView）
+- 履帶式水平佇列：最左＝隊首（下次輪值），彩色代號徽章，醒目顯示各池「輪序月份」（updatedMonth）
+- **整排捲動**模式：左右箭頭／滑動履帶調整起點（順序不打散），點任一人直接設為隊首
+- **自由拖曳**模式：pointer 事件拖曳重排（支援觸控），可移除成員
+- skipQueue 以「優先補位」chips 顯示，可手動移出
+- 輪序預覽下方顯示**月底交接狀態**：各池下月隊首、完整順序與 skipQueue
 
 ### `Holidays_{year}` 分頁
 | 欄位 | 說明 |

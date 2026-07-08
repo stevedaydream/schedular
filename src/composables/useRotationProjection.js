@@ -55,7 +55,7 @@ export function useRotationProjection() {
    * 往回最多找 6 個月的 proposedPools 作為基準，
    * 基準到目標月份之間的空缺用日期推算模擬補齊。
    */
-  async function getEffectiveRotationPools(yyyyMM) {
+  async function getEffectiveRotationPoolsWithBase(yyyyMM) {
     let basePools = null
     let baseMonth = null
 
@@ -81,7 +81,7 @@ export function useRotationProjection() {
       if (settingsStore.rotationPools.length === 0) await settingsStore.fetchRotationPools()
       const map = {}
       settingsStore.rotationPools.forEach(p => { map[p.poolName] = p })
-      return map
+      return { pools: map, baseMonth: null }
     }
 
     const gapMonths = []
@@ -90,18 +90,29 @@ export function useRotationProjection() {
       gapMonths.push(curr)
       curr = addMonths(curr, 1)
     }
-    return gapMonths.length > 0 ? simulatePoolsThrough(basePools, gapMonths) : basePools
+    return {
+      pools: gapMonths.length > 0 ? simulatePoolsThrough(basePools, gapMonths) : basePools,
+      baseMonth
+    }
+  }
+
+  async function getEffectiveRotationPools(yyyyMM) {
+    const { pools } = await getEffectiveRotationPoolsWithBase(yyyyMM)
+    return pools
   }
 
   /**
    * 投影指定月份的六日班別分配（唯讀，不儲存）。
-   * @returns {Array} [{ day, dateStr, dayOfWeek, dayType, dUserId, nUserId }]
+   * @returns {{ assignments: Array, finalPools: Object, baseMonth: string|null }}
+   *   assignments: [{ day, dateStr, dayOfWeek, dayType, dUserId, nUserId }]
+   *   finalPools:  推算完成後各池狀態（月底交接用）
+   *   baseMonth:   輪序起點來源月份（null = 直接使用 RotationPools）
    */
   async function projectMonth(yyyyMM) {
     const year = parseInt(yyyyMM.slice(0, 4))
     await fetchHolidays(year)
 
-    const pools = await getEffectiveRotationPools(yyyyMM)
+    const { pools, baseMonth } = await getEffectiveRotationPoolsWithBase(yyyyMM)
     const activeUsers = settingsStore.users.filter(
       u => u.isActive !== false && u.isActive !== 'false' && !(u.noSchedule === true || u.noSchedule === 'true')
     )
@@ -131,8 +142,8 @@ export function useRotationProjection() {
       assignments.push({ day, dateStr, dayOfWeek, dayType, dUserId, nUserId })
     })
 
-    return assignments
+    return { assignments, finalPools: result.updatedPools, baseMonth }
   }
 
-  return { getEffectiveRotationPools, simulatePoolsThrough, projectMonth }
+  return { getEffectiveRotationPools, getEffectiveRotationPoolsWithBase, simulatePoolsThrough, projectMonth }
 }

@@ -6,7 +6,7 @@
 # VITE_SYSTEM_LABEL=測試版
 # GAS scriptId: 1ZZH4HaFEEjYOqtS1X-FcD5r5pAGMBDDMrRO0aZI62-eSeFtV0QxlGNek
 # GAS deploymentId: AKfycbyhepYA8SA-M2Ulil9itz3dOeKNoBxfPLPUSllt78UAujASG7UpQUPwm02ZbMJzXFKXtg
-# Netlify: https://delightful-zabaione-5cc15d.netlify.app
+# Netlify（已棄用，記得到後台刪站）: https://delightful-zabaione-5cc15d.netlify.app
 
 # ══════════════════════════════════════════════
 # 正式版 (cgh9anp@gmail.com)
@@ -16,15 +16,16 @@
 # VITE_SYSTEM_LABEL=正式版
 # GAS scriptId: 1EjTEwRUcs9rG0XpGHHM8C-NjhnyRNC8UtTf127HqIwtjZ_lU-vfAZWra
 # GAS deploymentId: AKfycbxkAXCtVguzGYAQtnBwnghnTklw4itP7sFEyITcRJpFvTcnmTG6XOKJElRlfPosf3CV
-# Netlify: https://melodious-cucurucho-a191f8.netlify.app
-# Netlify (teamoneproject004): https://dynamic-bombolone-029d66.netlify.app
+# Netlify（已棄用，記得到後台刪站）: https://melodious-cucurucho-a191f8.netlify.app
+# Netlify（已棄用，teamoneproject004）: https://dynamic-bombolone-029d66.netlify.app
 
 # ══════════════════════════════════════════════
-# 前端部署
+# 前端部署（Vercel，SPA rewrite 設定在 vercel.json）
 # ══════════════════════════════════════════════
-cd G:\project\scheduler
+cd I:\project\scheduler
 
-npm run build && netlify deploy --prod --dir=dist
+npm run build && vercel --prod
+# 或執行 deploy-vercel.bat
 
 # ══════════════════════════════════════════════
 # GAS 部署

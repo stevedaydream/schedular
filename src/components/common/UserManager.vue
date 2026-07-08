@@ -48,6 +48,7 @@
             <th class="text-left px-4 py-3 font-medium text-gray-700">角色</th>
             <th class="text-center px-4 py-3 font-medium text-gray-700">帳號狀態</th>
             <th class="text-center px-4 py-3 font-medium text-gray-700">支援模式</th>
+            <th class="text-center px-4 py-3 font-medium text-gray-700">輪序排除</th>
             <th class="text-center px-4 py-3 font-medium text-gray-700">排序</th>
             <th class="text-right px-4 py-3 font-medium text-gray-700">操作</th>
           </tr>
@@ -102,6 +103,16 @@
               </span>
               <span v-else class="text-gray-200">—</span>
             </td>
+            <td class="px-4 py-3 text-center">
+              <span v-if="poolExTags(user).length === 0" class="text-gray-300">—</span>
+              <span v-else class="inline-flex gap-1 flex-wrap justify-center">
+                <span
+                  v-for="t in poolExTags(user)"
+                  :key="t"
+                  class="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium"
+                >{{ t }}</span>
+              </span>
+            </td>
             <td class="px-4 py-3 text-center text-gray-500">{{ user.sortOrder }}</td>
             <td class="px-4 py-3 text-right">
               <button @click="openEditForm(user)" class="text-blue-600 hover:text-blue-800 text-xs mr-3">編輯</button>
@@ -109,7 +120,7 @@
             </td>
           </tr>
           <tr v-if="settingsStore.users.length === 0">
-            <td colspan="6" class="text-center py-8 text-gray-400">尚無人員</td>
+            <td colspan="10" class="text-center py-8 text-gray-400">尚無人員</td>
           </tr>
         </tbody>
       </table>
@@ -163,6 +174,20 @@
               支援模式
               <span class="text-xs text-gray-400 ml-1">（僅參與 D/N/AM，不佔 Off 配額）</span>
             </label>
+          </div>
+          <div v-if="form.isActive && !form.noSchedule">
+            <label class="block text-sm font-medium text-gray-700 mb-1">輪序排除</label>
+            <p class="text-xs text-gray-400 mb-2">勾選後自動退出該輪序池；取消勾選自動補回隊尾</p>
+            <div class="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              <label
+                v-for="p in POOL_EX_OPTIONS"
+                :key="p.key"
+                class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer"
+              >
+                <input type="checkbox" v-model="form.poolEx[p.key]" class="rounded" />
+                {{ p.label }}
+              </label>
+            </div>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">代號</label>
@@ -501,6 +526,22 @@ const removeTarget = ref(null)
 const submitting = ref(false)
 const formError = ref(null)
 
+const POOL_EX_OPTIONS = [
+  { key: 'satD', label: '不值週六D', tag: '六D' },
+  { key: 'satN', label: '不值週六N', tag: '六N' },
+  { key: 'sunD', label: '不值週日D', tag: '日D' },
+  { key: 'sunN', label: '不值週日N', tag: '日N' }
+]
+
+function emptyPoolEx() {
+  return { satD: false, satN: false, sunD: false, sunN: false }
+}
+
+function poolExTags(user) {
+  const ex = user.poolEx || {}
+  return POOL_EX_OPTIONS.filter(p => ex[p.key]).map(p => p.tag)
+}
+
 const form = reactive({
   name: '',
   email: '',
@@ -510,7 +551,8 @@ const form = reactive({
   isSupport: false,
   noSchedule: false,
   sortOrder: 0,
-  code: ''
+  code: '',
+  poolEx: emptyPoolEx()
 })
 
 const sortedUsers = computed(() =>
@@ -563,7 +605,8 @@ function openAddForm() {
     isSupport: false,
     noSchedule: false,
     sortOrder: settingsStore.users.length,
-    code: nextAvailableCode()
+    code: nextAvailableCode(),
+    poolEx: emptyPoolEx()
   })
   formError.value = null
   showForm.value = true
@@ -580,7 +623,8 @@ function openEditForm(user) {
     isSupport: user.isSupport === true || user.isSupport === 'true',
     noSchedule: user.noSchedule === true || user.noSchedule === 'true',
     sortOrder: user.sortOrder || 0,
-    code: user.code || ''
+    code: user.code || '',
+    poolEx: { ...emptyPoolEx(), ...(user.poolEx || {}) }
   })
   formError.value = null
   showForm.value = true
@@ -615,6 +659,7 @@ async function handleSubmit() {
       noSchedule: form.noSchedule,
       sortOrder: form.sortOrder,
       code: form.code.toUpperCase(),
+      poolEx: { ...form.poolEx },
       ...(passwordHash !== undefined && { passwordHash })
     })
   } else {
@@ -635,7 +680,8 @@ async function handleSubmit() {
       isSupport: form.isSupport,
       noSchedule: form.noSchedule,
       sortOrder: form.sortOrder,
-      code: form.code.toUpperCase()
+      code: form.code.toUpperCase(),
+      poolEx: { ...form.poolEx }
     })
   }
 
